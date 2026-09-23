@@ -1,0 +1,16 @@
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos temporales de Microsoft Office
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# Archivos temporales generales
+*.tmp
+*.temp
+
+# Configuracion local de IDE
+.idea/
+*.swp
