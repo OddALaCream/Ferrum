@@ -1,5 +1,11 @@
 # Modelos C4
 
-Esta carpeta está destinada a las fuentes editables de los diagramas C4.
+Esta carpeta reúne las representaciones disponibles de los diagramas C4 del Sistema de Gestión de Proyectos Serfamilia.
 
-No se localizaron fuentes editables independientes para C1, C2 o C3. Los diagramas disponibles actualmente están incluidos como imágenes dentro del Documento 3 de arquitectura.
+## Diagramas disponibles
+
+- [`c1-contexto.jpeg`](c1-contexto.jpeg): diagrama de contexto del sistema.
+- [`c2-contenedores.jpeg`](c2-contenedores.jpeg): diagrama de contenedores.
+- [`c3-componentes.jpeg`](c3-componentes.jpeg): diagrama de componentes de la API REST Core.
+
+Los archivos disponibles son exportaciones JPEG. No se localizaron fuentes editables independientes en formatos como Draw.io, PlantUML, Mermaid o Structurizr DSL; cuando estén disponibles, se almacenarán en esta misma carpeta.
