@@ -1,6 +1,6 @@
 # Sistema de Gestión de Proyectos Serfamilia
 
-Repositorio académico del Sistema de Gestión de Proyectos Serfamilia (SGP). En la etapa actual reúne la estructuración, la documentación de elicitación, los requisitos y la arquitectura del proyecto; todavía no contiene desarrollo de software.
+Repositorio académico del Sistema de Gestión de Proyectos Serfamilia (SGP). En la etapa actual reúne la estructuración, la documentación de elicitación, los requisitos y la arquitectura del proyecto; incorpora además el entorno técnico de desarrollo (API NestJS, SPA Vue 3 y base de datos PostgreSQL).
 
 ## Contexto académico
 
@@ -23,6 +23,11 @@ El repositorio se organiza como parte de una entrega universitaria de Ingenierí
     └── c4/
 ```
 
+- `src/backend/`: API REST Core (NestJS 11, TypeORM, Node.js 22).
+- `src/frontend/`: SPA (Vue 3, Vite, TypeScript, Pinia, PrimeVue).
+- `database/`: DDL de PostgreSQL 16 (`01_schema.sql`) y datos de desarrollo (`02_seed_dev.sql`).
+- `scripts/`: preparación de la base de datos local.
+- `docs/entorno-desarrollo.md`: guía para levantar el entorno local.
 - `docs/gestion-git-github.md`: evidencia del uso de ramas feature, commits semánticos y Pull Requests.
 - `docs/entrevistas/`: fuentes de elicitación de requisitos.
 - `docs/srs/`: Especificación de Requisitos de Software.
@@ -31,7 +36,19 @@ El repositorio se organiza como parte de una entrega universitaria de Ingenierí
 - `docs/arquitectura/adr/`: registros independientes de decisiones arquitectónicas, cuando estén disponibles.
 - `modelos/c4/`: fuentes editables de diagramas C4, cuando estén disponibles.
 
-Los directorios preexistentes `models/`, `src/` y `tests/` se conservan sin contenido de aplicación durante esta etapa documental.
+Los directorios preexistentes `models/` y `tests/` se conservan vacíos: el código vive en `src/backend/` y `src/frontend/`, siguiendo la estructura del documento de arquitectura (C3, sección 5.3).
+
+## Puesta en marcha
+
+Pasos completos en [`docs/entorno-desarrollo.md`](docs/entorno-desarrollo.md). Resumen:
+
+```bash
+cp .env.example .env
+bash scripts/setup-db.sh          # PowerShell: .\scripts\setup-db.ps1
+docker compose up -d              # MinIO y Mailpit
+cd src/backend && npm install && npm run migration:run && npm run seed:dev && npm run start:dev
+cd src/frontend && npm install && npm run dev
+```
 
 ## Convenciones de trabajo
 

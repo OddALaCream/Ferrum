@@ -14,3 +14,25 @@ Thumbs.db
 # Configuracion local de IDE
 .idea/
 *.swp
+
+# Dependencias y artefactos de compilación
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Variables de entorno locales (NUNCA versionar secretos)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Caché de ESLint
+.eslintcache
+
+# Archivos comprimidos sueltos
+*.zip
+*.rar
