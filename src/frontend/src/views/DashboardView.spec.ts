@@ -7,7 +7,7 @@ vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 
 
 describe('DashboardView', () => {
   it('muestra la API como conectada cuando /health responde ok', async () => {
-    const wrapper = mount(DashboardView, { global: { plugins: [createPinia()] } });
+    const wrapper = mount(DashboardView, { global: { plugins: [createPinia()], stubs: { RouterLink: true } } });
     await new Promise((r) => setTimeout(r));
     expect(wrapper.get('[data-test="api-status"]').text()).toBe('conectada');
   });
