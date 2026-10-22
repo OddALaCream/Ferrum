@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+@import 'tailwindcss-primeui';
+/* En capa para que utilidades como `hidden` puedan sobrescribir el display de `.pi` */
+@import 'primeicons/primeicons.css' layer(base);
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  @apply bg-slate-50 font-sans text-slate-700 antialiased;
+}

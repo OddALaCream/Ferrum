@@ -15,12 +15,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- crypt() para el seed de desarrollo
 -- ---------------------------------------------------------------------
 -- 1. TIPOS ENUMERADOS
 -- ---------------------------------------------------------------------
-CREATE TYPE rol_usuario      AS ENUM ('DIRECTOR', 'TECNICO', 'FINANCIADOR');
+CREATE TYPE rol_usuario      AS ENUM ('DIRECTOR', 'ADMINISTRATIVO', 'TECNICO', 'FINANCIADOR');
 CREATE TYPE moneda_tipo      AS ENUM ('BOB', 'USD');
 CREATE TYPE estado_proyecto  AS ENUM ('PLANIFICACION', 'EN_EJECUCION', 'PAUSADO', 'CERRADO');
-CREATE TYPE estado_actividad AS ENUM ('PENDIENTE', 'EN_CURSO', 'COMPLETADA', 'RETRASADA');  -- RN-11, RF-15
+CREATE TYPE estado_actividad AS ENUM ('PENDIENTE', 'EN_CURSO', 'COMPLETADA', 'RETRASADA');
 CREATE TYPE estado_tarea     AS ENUM ('PENDIENTE', 'EN_CURSO', 'COMPLETADA');
 CREATE TYPE estado_avance    AS ENUM ('BORRADOR', 'ENVIADO', 'APROBADO', 'OBSERVADO', 'ANULADO');
+CREATE TYPE estado_solicitud AS ENUM ('PENDIENTE', 'APROBADA', 'RECHAZADA');
 CREATE TYPE estado_tramo     AS ENUM ('PENDIENTE', 'HABILITADO', 'DESEMBOLSADO');
 CREATE TYPE tipo_condicion   AS ENUM ('IOV', 'RESULTADO', 'PROYECTO');
 
@@ -73,16 +74,16 @@ CREATE INDEX ix_usuarios_financiador ON usuarios (financiador_id) WHERE financia
 -- Refresh tokens rotativos (ADR-004). familia_id permite revocar toda la
 -- cadena si se detecta reutilización de un token ya rotado.
 CREATE TABLE refresh_tokens (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  usuario_id     uuid        NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
-  familia_id     uuid        NOT NULL,
-  token_hash     char(64)    NOT NULL UNIQUE,              -- SHA-256 hex del token
-  expira_at      timestamptz NOT NULL,
-  revocado_at    timestamptz,
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  usuario_id      uuid        NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+  familia_id      uuid        NOT NULL,
+  token_hash      char(64)    NOT NULL UNIQUE,              -- SHA-256 hex del token
+  expira_at       timestamptz NOT NULL,
+  revocado_at     timestamptz,
   reemplazado_por uuid REFERENCES refresh_tokens (id) ON DELETE SET NULL,
-  ip             inet,
-  user_agent     varchar(300),
-  created_at     timestamptz NOT NULL DEFAULT now()
+  ip              inet,
+  user_agent      varchar(300),
+  created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_refresh_usuario ON refresh_tokens (usuario_id);
 CREATE INDEX ix_refresh_familia ON refresh_tokens (familia_id);
@@ -140,36 +141,46 @@ CREATE INDEX ix_equipo_usuario ON proyecto_equipo (usuario_id) WHERE retirado_at
 CREATE INDEX ix_equipo_proyecto_historial ON proyecto_equipo (proyecto_id);   -- historial completo
 
 -- ---------------------------------------------------------------------
--- 5. MARCO LÓGICO: Proyecto → Resultado → I.O.V. / Actividad → Tarea
+-- 5. MARCO LÓGICO: Proyecto → Obj Especifico → Resultado → I.O.V. / Actividad
 -- ---------------------------------------------------------------------
-CREATE TABLE resultados (
+CREATE TABLE objetivos_especificos (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   proyecto_id      uuid          NOT NULL REFERENCES proyectos (id) ON DELETE RESTRICT,
   codigo           varchar(20)   NOT NULL,
   descripcion      text          NOT NULL,
-  peso             numeric(5,2)  NOT NULL DEFAULT 0 CHECK (peso BETWEEN 0 AND 100),
-  cumplimiento_pct numeric(5,2)  NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
   created_at       timestamptz   NOT NULL DEFAULT now(),
   updated_at       timestamptz   NOT NULL DEFAULT now(),
   UNIQUE (proyecto_id, codigo)
 );
 
+CREATE TABLE resultados (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  objetivo_especifico_id uuid          NOT NULL REFERENCES objetivos_especificos (id) ON DELETE RESTRICT,
+  codigo                 varchar(20)   NOT NULL,
+  descripcion            text          NOT NULL,
+  peso                   numeric(5,2)  NOT NULL DEFAULT 0 CHECK (peso BETWEEN 0 AND 100),
+  cumplimiento_pct       numeric(5,2)  NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
+  created_at             timestamptz   NOT NULL DEFAULT now(),
+  updated_at             timestamptz   NOT NULL DEFAULT now(),
+  UNIQUE (objetivo_especifico_id, codigo)
+);
+
 -- I.O.V. = Indicador Objetivamente Verificable
 CREATE TABLE iov (
-  id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  resultado_id               uuid          NOT NULL REFERENCES resultados (id) ON DELETE RESTRICT,
-  codigo                     varchar(20)   NOT NULL,
-  descripcion                text          NOT NULL,
-  unidad                     varchar(50)   NOT NULL,
-  linea_base                 numeric(14,2) NOT NULL DEFAULT 0,
-  meta                       numeric(14,2) NOT NULL,
-  peso                       numeric(5,2)  NOT NULL DEFAULT 0 CHECK (peso BETWEEN 0 AND 100),
-  tipo_fuente_verificacion   varchar(150)  NOT NULL,       -- p. ej. "Acta firmada", "Informe técnico"
-  responsable_id             uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
-  valor_actual               numeric(14,2) NOT NULL DEFAULT 0, -- acumulado de avances aprobados
-  cumplimiento_pct           numeric(5,2)  NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
-  created_at                 timestamptz   NOT NULL DEFAULT now(),
-  updated_at                 timestamptz   NOT NULL DEFAULT now(),
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  resultado_id             uuid          NOT NULL REFERENCES resultados (id) ON DELETE RESTRICT,
+  codigo                   varchar(20)   NOT NULL,
+  descripcion              text          NOT NULL,
+  unidad                   varchar(50)   NOT NULL,
+  linea_base               numeric(14,2) NOT NULL DEFAULT 0,
+  meta                     numeric(14,2) NOT NULL,
+  peso                     numeric(5,2)  NOT NULL DEFAULT 0 CHECK (peso BETWEEN 0 AND 100),
+  tipo_fuente_verificacion varchar(150)  NOT NULL,       -- p. ej. "Acta firmada", "Informe técnico"
+  responsable_id           uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
+  valor_actual             numeric(14,2) NOT NULL DEFAULT 0, -- acumulado de avances aprobados
+  cumplimiento_pct         numeric(5,2)  NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
+  created_at               timestamptz   NOT NULL DEFAULT now(),
+  updated_at               timestamptz   NOT NULL DEFAULT now(),
   UNIQUE (resultado_id, codigo),
   CONSTRAINT ck_iov_meta CHECK (meta <> linea_base),
   UNIQUE (id, resultado_id)                       -- habilita la FK compuesta de actividades
@@ -177,39 +188,42 @@ CREATE TABLE iov (
 CREATE INDEX ix_iov_responsable ON iov (responsable_id);
 
 CREATE TABLE actividades (
-  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  resultado_id     uuid             NOT NULL REFERENCES resultados (id) ON DELETE RESTRICT,
-  iov_id           uuid,                                          -- opcional: indicador que alimenta
-  codigo           varchar(20)      NOT NULL,
-  nombre           varchar(250)     NOT NULL,
-  descripcion      text,
-  responsable_id   uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
-  fecha_inicio     date             NOT NULL,
-  fecha_fin        date             NOT NULL,
-  estado           estado_actividad NOT NULL DEFAULT 'PENDIENTE',
-  meta_cuantitativa numeric(14,2),                                       -- RF-08: meta de la actividad (ej. 5 talleres)
-  cumplimiento_pct  numeric(5,2)    NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
-  created_at        timestamptz     NOT NULL DEFAULT now(),
-  updated_at        timestamptz     NOT NULL DEFAULT now(),
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  resultado_id             uuid             NOT NULL REFERENCES resultados (id) ON DELETE RESTRICT,
+  iov_id                   uuid,                                          -- opcional: indicador que alimenta
+  codigo                   varchar(20)      NOT NULL,
+  nombre                   varchar(250)     NOT NULL,
+  descripcion              text,
+  responsable_id           uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
+  fecha_planificada_inicio date             NOT NULL,
+  fecha_planificada_fin    date             NOT NULL,
+  fecha_real_inicio        date,
+  fecha_real_fin           date,
+  externalidad             text,                                          -- justificación si hay desfase
+  estado                   estado_actividad NOT NULL DEFAULT 'PENDIENTE',
+  meta_cuantitativa        numeric(14,2),                                 -- meta de la actividad (ej. 5 talleres)
+  cumplimiento_pct         numeric(5,2)     NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
+  created_at               timestamptz      NOT NULL DEFAULT now(),
+  updated_at               timestamptz      NOT NULL DEFAULT now(),
   UNIQUE (resultado_id, codigo),
-  CONSTRAINT ck_actividad_fechas CHECK (fecha_fin >= fecha_inicio),
+  CONSTRAINT ck_actividad_fechas_planificadas CHECK (fecha_planificada_fin >= fecha_planificada_inicio),
+  CONSTRAINT ck_actividad_fechas_reales CHECK (fecha_real_fin IS NULL OR fecha_real_inicio IS NULL OR fecha_real_fin >= fecha_real_inicio),
   -- el I.O.V. debe pertenecer al MISMO resultado que la actividad (si iov_id es NULL no se evalúa)
   FOREIGN KEY (iov_id, resultado_id) REFERENCES iov (id, resultado_id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_actividades_iov ON actividades (iov_id);
 CREATE INDEX ix_actividades_responsable ON actividades (responsable_id);
--- apoya el cron diario de actividades por vencer / vencidas
-CREATE INDEX ix_actividades_vencimiento ON actividades (fecha_fin)
+CREATE INDEX ix_actividades_vencimiento ON actividades (fecha_planificada_fin)
   WHERE estado IN ('PENDIENTE', 'EN_CURSO');
 
 CREATE TABLE tareas (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   actividad_id   uuid         NOT NULL REFERENCES actividades (id) ON DELETE RESTRICT,
   nombre         varchar(250) NOT NULL,
-  responsable_id uuid         REFERENCES usuarios (id) ON DELETE RESTRICT,  -- RF-24
+  responsable_id uuid         REFERENCES usuarios (id) ON DELETE RESTRICT,
   estado         estado_tarea NOT NULL DEFAULT 'PENDIENTE',
   fecha_limite   date,
-  cerrado_at     timestamptz,                                                -- RF-24: fecha de cierre al completar
+  cerrado_at     timestamptz,
   created_at     timestamptz  NOT NULL DEFAULT now(),
   updated_at     timestamptz  NOT NULL DEFAULT now()
 );
@@ -219,20 +233,20 @@ CREATE INDEX ix_tareas_actividad ON tareas (actividad_id);
 -- 6. SEGUIMIENTO: AVANCES Y EVIDENCIAS
 -- ---------------------------------------------------------------------
 CREATE TABLE avances (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  iov_id         uuid REFERENCES iov (id)         ON DELETE RESTRICT,
-  actividad_id   uuid REFERENCES actividades (id) ON DELETE RESTRICT,
-  autor_id       uuid          NOT NULL REFERENCES usuarios (id) ON DELETE RESTRICT,
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  iov_id          uuid REFERENCES iov (id)         ON DELETE RESTRICT,
+  actividad_id    uuid REFERENCES actividades (id) ON DELETE RESTRICT,
+  autor_id        uuid          NOT NULL REFERENCES usuarios (id) ON DELETE RESTRICT,
   valor_reportado numeric(14,2) CHECK (valor_reportado >= 0),   -- aporte cuantitativo (solo I.O.V.)
-  fecha_corte    date          NOT NULL DEFAULT current_date,
-  descripcion    text,
-  estado         estado_avance NOT NULL DEFAULT 'BORRADOR',
-  enviado_at     timestamptz,
-  revisado_por   uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
-  revisado_at    timestamptz,
-  observacion    text,
-  created_at     timestamptz   NOT NULL DEFAULT now(),
-  updated_at     timestamptz   NOT NULL DEFAULT now(),
+  fecha_corte     date          NOT NULL DEFAULT current_date,
+  descripcion     text,
+  estado          estado_avance NOT NULL DEFAULT 'BORRADOR',
+  enviado_at      timestamptz,
+  revisado_por    uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
+  revisado_at     timestamptz,
+  observacion     text,
+  created_at      timestamptz   NOT NULL DEFAULT now(),
+  updated_at      timestamptz   NOT NULL DEFAULT now(),
   -- un avance pertenece a un I.O.V. o a una actividad, nunca a ambos ni a ninguno
   CONSTRAINT ck_avance_objetivo CHECK ((iov_id IS NOT NULL) <> (actividad_id IS NOT NULL)),
   CONSTRAINT ck_avance_valor CHECK (iov_id IS NULL OR valor_reportado IS NOT NULL),
@@ -246,8 +260,7 @@ CREATE INDEX ix_avances_actividad ON avances (actividad_id);
 CREATE INDEX ix_avances_autor     ON avances (autor_id);
 CREATE INDEX ix_avances_estado    ON avances (estado);
 
--- Fuentes de verificación. En la BD solo van los metadatos; el archivo
--- vive en MinIO / S3 bajo storage_key (ADR-003).
+-- Fuentes de verificación
 CREATE TABLE evidencias (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   avance_id       uuid         NOT NULL REFERENCES avances (id) ON DELETE RESTRICT,
@@ -262,7 +275,6 @@ CREATE TABLE evidencias (
   subido_por      uuid         NOT NULL REFERENCES usuarios (id) ON DELETE RESTRICT,
   created_at      timestamptz  NOT NULL DEFAULT now(),
   UNIQUE (avance_id, id),
-  -- la versión que reemplaza debe pertenecer al mismo avance
   FOREIGN KEY (avance_id, reemplaza_a) REFERENCES evidencias (avance_id, id) ON DELETE RESTRICT,
   CONSTRAINT ck_evidencia_version CHECK ((version = 1) = (reemplaza_a IS NULL))
 );
@@ -282,10 +294,30 @@ CREATE TABLE partidas (
   UNIQUE (proyecto_id, nombre)
 );
 
+CREATE TABLE solicitudes_desembolso (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actividad_id     uuid             NOT NULL REFERENCES actividades (id) ON DELETE RESTRICT,
+  solicitante_id   uuid             NOT NULL REFERENCES usuarios (id) ON DELETE RESTRICT,
+  partida_id       uuid             REFERENCES partidas (id) ON DELETE RESTRICT,
+  monto_solicitado numeric(14,2)    NOT NULL CHECK (monto_solicitado > 0),
+  estado           estado_solicitud NOT NULL DEFAULT 'PENDIENTE',
+  aprobador_id     uuid             REFERENCES usuarios (id) ON DELETE RESTRICT,
+  observaciones    text,
+  fecha_solicitud  date             NOT NULL DEFAULT current_date,
+  fecha_aprobacion date,
+  created_at       timestamptz      NOT NULL DEFAULT now(),
+  updated_at       timestamptz      NOT NULL DEFAULT now(),
+  CONSTRAINT ck_solicitud_aprobador CHECK (
+    estado = 'PENDIENTE' OR aprobador_id IS NOT NULL
+  )
+);
+CREATE INDEX ix_solicitudes_actividad ON solicitudes_desembolso (actividad_id);
+CREATE INDEX ix_solicitudes_partida   ON solicitudes_desembolso (partida_id);
+
 CREATE TABLE gastos (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   partida_id     uuid          NOT NULL REFERENCES partidas (id)    ON DELETE RESTRICT,
-  actividad_id   uuid          REFERENCES actividades (id) ON DELETE RESTRICT,  -- RF-16
+  actividad_id   uuid          REFERENCES actividades (id) ON DELETE RESTRICT,
   monto          numeric(14,2) NOT NULL CHECK (monto > 0),
   fecha          date          NOT NULL,
   descripcion    varchar(500)  NOT NULL,
@@ -293,8 +325,8 @@ CREATE TABLE gastos (
   created_at     timestamptz   NOT NULL DEFAULT now(),
   updated_at     timestamptz   NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_gastos_partida    ON gastos (partida_id);
-CREATE INDEX ix_gastos_actividad  ON gastos (actividad_id) WHERE actividad_id IS NOT NULL;
+CREATE INDEX ix_gastos_partida   ON gastos (partida_id);
+CREATE INDEX ix_gastos_actividad ON gastos (actividad_id) WHERE actividad_id IS NOT NULL;
 
 -- Tramos de desembolso del financiador
 CREATE TABLE tramos (
@@ -332,7 +364,7 @@ CREATE INDEX ix_condiciones_tramo ON tramo_condiciones (tramo_id);
 CREATE INDEX ix_condiciones_iov ON tramo_condiciones (iov_id) WHERE iov_id IS NOT NULL;
 CREATE INDEX ix_condiciones_resultado ON tramo_condiciones (resultado_id) WHERE resultado_id IS NOT NULL;
 
--- Desembolsos recibidos por tramo (RF-31). El monto real puede diferir del estimado en el tramo.
+-- Desembolsos recibidos por tramo
 CREATE TABLE desembolsos (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tramo_id       uuid          NOT NULL REFERENCES tramos (id) ON DELETE RESTRICT,
@@ -343,7 +375,7 @@ CREATE TABLE desembolsos (
 );
 CREATE INDEX ix_desembolsos_tramo ON desembolsos (tramo_id);
 
--- Respaldos documentales de gastos y desembolsos (RF-16, RF-31)
+-- Respaldos documentales de gastos y desembolsos
 CREATE TABLE documentos_soporte (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   gasto_id        uuid REFERENCES gastos      (id) ON DELETE RESTRICT,
@@ -358,19 +390,19 @@ CREATE TABLE documentos_soporte (
   created_at      timestamptz  NOT NULL DEFAULT now(),
   CONSTRAINT ck_soporte_dueno CHECK ((gasto_id IS NOT NULL) <> (desembolso_id IS NOT NULL))
 );
-CREATE INDEX ix_soporte_gasto       ON documentos_soporte (gasto_id);
-CREATE INDEX ix_soporte_desembolso  ON documentos_soporte (desembolso_id);
+CREATE INDEX ix_soporte_gasto      ON documentos_soporte (gasto_id);
+CREATE INDEX ix_soporte_desembolso ON documentos_soporte (desembolso_id);
 
 -- ---------------------------------------------------------------------
 -- 8. AUDITORÍA (bitácora append-only)
 -- ---------------------------------------------------------------------
 CREATE TABLE audit_log (
-  id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  usuario_id     uuid REFERENCES usuarios (id) ON DELETE RESTRICT,  -- NULL = sistema o login fallido
-  usuario_email  citext,                                            -- copia, útil si el login falla
-  accion         varchar(60)  NOT NULL,                             -- CREAR, EDITAR, APROBAR, LOGIN_FALLIDO...
-  entidad        varchar(60)  NOT NULL,
-  entidad_id     varchar(64),
+  id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  usuario_id    uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
+  usuario_email citext,
+  accion        varchar(60)  NOT NULL,
+  entidad       varchar(60)  NOT NULL,
+  entidad_id    varchar(64),
   valor_anterior jsonb,
   valor_nuevo    jsonb,
   ip             inet,
@@ -383,26 +415,24 @@ CREATE INDEX ix_audit_fecha   ON audit_log (created_at DESC);
 
 -- ---------------------------------------------------------------------
 -- 9. TRIGGERS DE REGLAS DE NEGOCIO (defensa en profundidad)
---    La lógica principal vive en los servicios NestJS (ADR-007); estas
---    reglas impiden que un bug o un acceso directo corrompa los datos.
 -- ---------------------------------------------------------------------
 
 -- 9.1 updated_at automático
 CREATE TRIGGER trg_financiadores_upd BEFORE UPDATE ON financiadores FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_usuarios_upd      BEFORE UPDATE ON usuarios      FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_proyectos_upd     BEFORE UPDATE ON proyectos     FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+CREATE TRIGGER trg_objetivos_esp_upd BEFORE UPDATE ON objetivos_especificos FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_resultados_upd    BEFORE UPDATE ON resultados    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_iov_upd           BEFORE UPDATE ON iov           FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_actividades_upd   BEFORE UPDATE ON actividades   FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_tareas_upd        BEFORE UPDATE ON tareas        FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_avances_upd       BEFORE UPDATE ON avances       FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_partidas_upd      BEFORE UPDATE ON partidas      FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+CREATE TRIGGER trg_solicitudes_upd   BEFORE UPDATE ON solicitudes_desembolso FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_gastos_upd        BEFORE UPDATE ON gastos        FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_tramos_upd        BEFORE UPDATE ON tramos        FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
 -- 9.2 Máquina de estados del avance (ADR-007)
---     Borrador → Enviado → Aprobado | Observado ; Observado → Enviado ;
---     cualquier estado → Anulado. Un avance aprobado no cambia su valor.
 CREATE FUNCTION fn_avance_transicion() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -427,8 +457,6 @@ CREATE TRIGGER trg_avance_transicion BEFORE UPDATE OF estado, valor_reportado ON
   FOR EACH ROW EXECUTE FUNCTION fn_avance_transicion();
 
 -- 9.3 Un avance ENVIADO o APROBADO exige al menos una evidencia.
---     Se evalúa al confirmar la transacción (DEFERRED), para poder insertar
---     el avance y su evidencia en una sola transacción (Escenario A).
 CREATE FUNCTION fn_avance_requiere_evidencia() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -444,8 +472,7 @@ CREATE CONSTRAINT TRIGGER trg_avance_requiere_evidencia
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION fn_avance_requiere_evidencia();
 
--- 9.4 Evidencias inmutables: no se editan, solo se agregan versiones nuevas.
---     No se agregan a avances aprobados o anulados y solo se borran en borrador.
+-- 9.4 Evidencias inmutables
 CREATE FUNCTION fn_evidencia_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -475,8 +502,7 @@ END $$;
 CREATE TRIGGER trg_evidencia_guard BEFORE INSERT OR UPDATE OR DELETE ON evidencias
   FOR EACH ROW EXECUTE FUNCTION fn_evidencia_guard();
 
--- 9.5 Estados del proyecto (RN-09 asumida; ajustar si el documento dice otra cosa)
---     Planificación → En ejecución ⇄ Pausado → Cerrado. Cerrado es final.
+-- 9.5 Estados del proyecto
 CREATE FUNCTION fn_proyecto_transicion() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -542,11 +568,16 @@ BEGIN
   SELECT proyecto_id INTO v_proy_tramo FROM tramos WHERE id = NEW.tramo_id;
 
   IF NEW.tipo = 'IOV' THEN
-    SELECT r.proyecto_id INTO v_proy_ref
-      FROM iov i JOIN resultados r ON r.id = i.resultado_id
+    SELECT oe.proyecto_id INTO v_proy_ref
+      FROM iov i 
+      JOIN resultados r ON r.id = i.resultado_id
+      JOIN objetivos_especificos oe ON oe.id = r.objetivo_especifico_id
      WHERE i.id = NEW.iov_id;
   ELSIF NEW.tipo = 'RESULTADO' THEN
-    SELECT proyecto_id INTO v_proy_ref FROM resultados WHERE id = NEW.resultado_id;
+    SELECT oe.proyecto_id INTO v_proy_ref 
+      FROM resultados r
+      JOIN objetivos_especificos oe ON oe.id = r.objetivo_especifico_id
+     WHERE r.id = NEW.resultado_id;
   ELSE
     RETURN NEW;                       -- tipo PROYECTO: usa el proyecto del tramo
   END IF;
@@ -571,7 +602,7 @@ BEGIN
     FROM proyectos WHERE id = NEW.proyecto_id;
   SELECT COALESCE(SUM(monto), 0) INTO v_suma
     FROM tramos WHERE proyecto_id = NEW.proyecto_id
-      AND id IS DISTINCT FROM NEW.id;   -- excluye la propia fila en UPDATE
+      AND id IS DISTINCT FROM NEW.id;
   IF v_suma + NEW.monto > v_presupuesto THEN
     RAISE EXCEPTION 'La suma de tramos (% + %) supera el presupuesto del proyecto (%)',
       v_suma, NEW.monto, v_presupuesto USING ERRCODE = '23514';
@@ -607,7 +638,7 @@ END $$;
 CREATE TRIGGER trg_gastos_saldo BEFORE INSERT OR UPDATE OF monto ON gastos
   FOR EACH ROW EXECUTE FUNCTION fn_gastos_saldo();
 
--- 9.11 audit_log append-only: ni UPDATE, ni DELETE, ni TRUNCATE
+-- 9.11 audit_log append-only
 CREATE FUNCTION fn_audit_inmutable() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -622,7 +653,7 @@ CREATE TRIGGER trg_audit_no_truncate BEFORE TRUNCATE ON audit_log
 -- 10. VISTAS DE APOYO
 -- ---------------------------------------------------------------------
 
--- Versión vigente de cada evidencia (la que ninguna otra reemplaza)
+-- Versión vigente de cada evidencia
 CREATE VIEW vw_evidencias_vigentes AS
 SELECT e.*
   FROM evidencias e
@@ -643,7 +674,7 @@ SELECT p.id,
                    FROM gastos g JOIN partidas pa ON pa.id = g.partida_id
                   WHERE pa.proyecto_id = p.id), 0)                       AS gastado,
        COALESCE((SELECT SUM(d.monto) FROM desembolsos d JOIN tramos t ON t.id = d.tramo_id
-                  WHERE t.proyecto_id = p.id), 0)                            AS desembolsado,
+                  WHERE t.proyecto_id = p.id), 0)                        AS desembolsado,
        (SELECT COUNT(*) FROM tramos t
          WHERE t.proyecto_id = p.id AND t.estado = 'HABILITADO')         AS tramos_habilitados,
        (SELECT COUNT(*)
@@ -651,7 +682,8 @@ SELECT p.id,
           LEFT JOIN iov i         ON i.id  = a.iov_id
           LEFT JOIN actividades c ON c.id  = a.actividad_id
           JOIN resultados r       ON r.id  = COALESCE(i.resultado_id, c.resultado_id)
-         WHERE r.proyecto_id = p.id AND a.estado = 'ENVIADO')            AS avances_por_revisar
+          JOIN objetivos_especificos oe ON oe.id = r.objetivo_especifico_id
+         WHERE oe.proyecto_id = p.id AND a.estado = 'ENVIADO')           AS avances_por_revisar
   FROM proyectos p
   JOIN financiadores f ON f.id = p.financiador_id
  WHERE p.deleted_at IS NULL;
