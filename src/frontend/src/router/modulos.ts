@@ -56,4 +56,13 @@ export const MODULOS: readonly Modulo[] = [
     icono: 'pi pi-file-pdf',
     component: () => import('@/views/ReportesView.vue'),
   },
+  {
+    name: 'bitacora',
+    path: 'bitacora',
+    titulo: 'Bitácora',
+    descripcion: 'Registro inalterable de quién modificó qué y cuándo (RF-34).',
+    icono: 'pi pi-history',
+    roles: ['director'],
+    component: () => import('@/views/Bitacora/BitacoraView.vue'),
+  },
 ];

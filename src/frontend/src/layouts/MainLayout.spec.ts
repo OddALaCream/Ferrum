@@ -8,7 +8,7 @@ import MainLayout from './MainLayout.vue';
 
 vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
 
-const TODOS = ['dashboard', 'marco-logico', 'cronograma', 'desembolsos', 'reportes'];
+const TODOS = ['dashboard', 'marco-logico', 'cronograma', 'desembolsos', 'reportes', 'bitacora'];
 
 let wrapper: VueWrapper | undefined;
 
@@ -41,6 +41,12 @@ describe('MainLayout', () => {
 
   it('al administrativo le oculta Marco Lógico y Cronograma', async () => {
     expect(await montarComo('administrativo')).toEqual(['dashboard', 'desembolsos', 'reportes']);
+  });
+
+  it('la Bitácora solo la ve el Director y se bloquea por URL para los demás', async () => {
+    expect(await montarComo('administrativo')).not.toContain('bitacora');
+    await router.push('/bitacora');
+    expect(router.currentRoute.value.name).toBe('dashboard');
   });
 
   it('bloquea por URL un módulo sin permiso', async () => {
