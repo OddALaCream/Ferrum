@@ -1,11 +1,22 @@
 <script setup lang="ts">
 import { isAxiosError } from 'axios';
+import AutoComplete, { type AutoCompleteCompleteEvent } from 'primevue/autocomplete';
+import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
 import SelectButton from 'primevue/selectbutton';
 import Skeleton from 'primevue/skeleton';
 import Tag from 'primevue/tag';
 import { useConfirm } from 'primevue/useconfirm';
 import { useToast } from 'primevue/usetoast';
 import { computed, ref, watch } from 'vue';
+import {
+  asignarTecnico,
+  buscarTecnicosDisponibles,
+  obtenerEquipo,
+  retirarTecnico,
+  type TecnicoProyecto,
+} from '@/api/equipo';
 import {
   actualizarEstado,
   getFinanciadores,
@@ -26,9 +37,14 @@ const confirm = useConfirm();
 
 const proyecto = ref<Proyecto | null>(null);
 const financiadores = ref<Financiador[]>([]);
+const equipo = ref<TecnicoProyecto[]>([]);
 const cargando = ref(true);
+const cargandoEquipo = ref(false);
 const noEncontrado = ref(false);
 const guardando = ref(false);
+const asignando = ref(false);
+const tecnicoSeleccionado = ref<TecnicoProyecto | { id: string; nombre: string; email: string } | null>(null);
+const sugerencias = ref<{ id: string; nombre: string; email: string }[]>([]);
 /**
  * Selección del SelectButton. Es un ref propio (no `:model-value="proyecto.estado"`) porque
  * PrimeVue guarda la selección internamente: hay que reasignarla para revertir un cambio
@@ -59,6 +75,22 @@ function formatoMonto(p: Proyecto): string {
   return new Intl.NumberFormat('es-BO', { style: 'currency', currency: p.moneda }).format(p.presupuestoTotal);
 }
 
+async function cargarEquipo() {
+  cargandoEquipo.value = true;
+  try {
+    equipo.value = await obtenerEquipo(props.id);
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'No se pudo cargar el equipo',
+      detail: detalleDe(e),
+      life: 6000,
+    });
+  } finally {
+    cargandoEquipo.value = false;
+  }
+}
+
 /** `silencioso` recarga sin mostrar el esqueleto (p. ej. tras un 422 para resincronizar el estado). */
 async function cargar(silencioso = false) {
   if (!silencioso) cargando.value = true;
@@ -67,16 +99,101 @@ async function cargar(silencioso = false) {
     const [p, f] = await Promise.all([obtenerProyecto(props.id), getFinanciadores()]);
     proyecto.value = p;
     financiadores.value = f;
+    await cargarEquipo();
   } catch (e) {
     if (isAxiosError(e) && e.response?.status === 404) {
       noEncontrado.value = true;
       proyecto.value = null;
+      equipo.value = [];
     } else {
       toast.add({ severity: 'error', summary: 'No se pudo cargar el proyecto', detail: detalleDe(e), life: 6000 });
     }
   } finally {
     cargando.value = false;
   }
+}
+
+async function filtrarTecnicos(event: AutoCompleteCompleteEvent) {
+  try {
+    sugerencias.value = await buscarTecnicosDisponibles(props.id, event.query);
+  } catch {
+    sugerencias.value = [];
+  }
+}
+
+async function asignarSeleccionado() {
+  const tecnico = tecnicoSeleccionado.value;
+  if (!tecnico || typeof tecnico === 'string' || !('id' in tecnico)) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Seleccione un técnico',
+      detail: 'Busque y elija un técnico de la lista antes de asignar.',
+      life: 4000,
+    });
+    return;
+  }
+
+  asignando.value = true;
+  try {
+    await asignarTecnico(props.id, tecnico.id);
+    toast.add({
+      severity: 'success',
+      summary: 'Técnico asignado',
+      detail: `${tecnico.nombre} se unió al equipo del proyecto.`,
+      life: 4000,
+    });
+    tecnicoSeleccionado.value = null;
+    sugerencias.value = [];
+    await cargarEquipo();
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'No se pudo asignar',
+      detail: detalleDe(e) ?? 'Inténtelo de nuevo.',
+      life: 6000,
+    });
+  } finally {
+    asignando.value = false;
+  }
+}
+
+function solicitarRetiro(tecnico: TecnicoProyecto) {
+  confirm.require({
+    header: 'Retirar del equipo',
+    message: `¿Retirar a ${tecnico.nombre} del equipo del proyecto?`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Cancelar', severity: 'secondary', outlined: true },
+    acceptProps: { label: 'Retirar', severity: 'danger' },
+    accept: () => confirmarRetiro(tecnico),
+  });
+}
+
+async function confirmarRetiro(tecnico: TecnicoProyecto) {
+  try {
+    await retirarTecnico(props.id, tecnico.id);
+    toast.add({
+      severity: 'success',
+      summary: 'Técnico retirado',
+      detail: `${tecnico.nombre} ya no forma parte del equipo.`,
+      life: 4000,
+    });
+    await cargarEquipo();
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'No se pudo retirar',
+      detail: detalleDe(e) ?? 'Inténtelo de nuevo.',
+      life: 6000,
+    });
+  }
+}
+
+function formatoFechaAsignacion(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-BO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function revertirSeleccion() {
@@ -314,6 +431,111 @@ watch(() => props.id, () => cargar(), { immediate: true });
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section
+        class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5"
+        data-test="seccion-equipo"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold text-slate-800">
+              Equipo Técnico
+            </h2>
+            <p class="mt-1 text-sm text-slate-500">
+              Técnicos asignados al seguimiento del proyecto.
+            </p>
+          </div>
+        </div>
+
+        <div
+          v-if="!soloLectura"
+          class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end"
+          data-test="asignar-equipo"
+        >
+          <div class="min-w-0 flex-1">
+            <label
+              for="buscar-tecnico"
+              class="mb-1.5 block text-sm font-medium text-slate-700"
+            >
+              Buscar técnico
+            </label>
+            <AutoComplete
+              v-model="tecnicoSeleccionado"
+              input-id="buscar-tecnico"
+              :suggestions="sugerencias"
+              option-label="nombre"
+              placeholder="Escriba el nombre del técnico…"
+              dropdown
+              force-selection
+              fluid
+              :disabled="asignando"
+              data-test="autocomplete-tecnico"
+              @complete="filtrarTecnicos"
+            >
+              <template #option="{ option }">
+                <div class="flex flex-col leading-tight">
+                  <span class="text-sm font-medium text-slate-800">{{ option.nombre }}</span>
+                  <span class="text-xs text-slate-500">{{ option.email }}</span>
+                </div>
+              </template>
+            </AutoComplete>
+          </div>
+          <Button
+            label="Asignar"
+            icon="pi pi-user-plus"
+            :loading="asignando"
+            :disabled="!tecnicoSeleccionado"
+            data-test="btn-asignar"
+            @click="asignarSeleccionado"
+          />
+        </div>
+
+        <DataTable
+          :value="equipo"
+          :loading="cargandoEquipo"
+          data-key="id"
+          class="mt-5"
+          size="small"
+          striped-rows
+          data-test="tabla-equipo"
+        >
+          <template #empty>
+            <p class="py-4 text-center text-sm text-slate-500">
+              Aún no hay técnicos asignados a este proyecto.
+            </p>
+          </template>
+          <Column
+            field="nombre"
+            header="Nombre"
+          />
+          <Column
+            field="email"
+            header="Email"
+          />
+          <Column header="Fecha de Asignación">
+            <template #body="{ data }">
+              {{ formatoFechaAsignacion(data.fechaAsignacion) }}
+            </template>
+          </Column>
+          <Column
+            v-if="!soloLectura"
+            header="Acciones"
+            style="width: 6rem"
+          >
+            <template #body="{ data }">
+              <Button
+                icon="pi pi-trash"
+                severity="danger"
+                text
+                rounded
+                :aria-label="`Retirar a ${data.nombre}`"
+                data-test="btn-retirar"
+                @click="solicitarRetiro(data)"
+              />
+            </template>
+          </Column>
+        </DataTable>
       </section>
     </template>
   </div>

@@ -4,22 +4,50 @@ import { createPinia, setActivePinia } from 'pinia';
 import PrimeVue from 'primevue/config';
 import SelectButton from 'primevue/selectbutton';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TecnicoProyecto } from '@/api/equipo';
 import type { EstadoProyecto, Proyecto } from '@/api/proyectos';
 import { useAuthStore, type Rol } from '@/stores/auth';
 import DetalleProyectoView from './DetalleProyectoView.vue';
 
 const ID = '33333333-3333-4333-8333-333333333333';
 
-const { obtenerProyecto, actualizarEstado, toastAdd, confirmRequire } = vi.hoisted(() => ({
+const tecnicoDemo: TecnicoProyecto = {
+  id: '22222222-2222-4222-8222-222222222222',
+  nombre: 'Técnico Demo',
+  email: 'tecnico@serfamilia.test',
+  fechaAsignacion: '2026-01-15T10:00:00.000Z',
+};
+
+const {
+  obtenerProyecto,
+  actualizarEstado,
+  obtenerEquipo,
+  asignarTecnico,
+  retirarTecnico,
+  buscarTecnicosDisponibles,
+  toastAdd,
+  confirmRequire,
+} = vi.hoisted(() => ({
   obtenerProyecto: vi.fn(),
   actualizarEstado: vi.fn(),
+  obtenerEquipo: vi.fn(),
+  asignarTecnico: vi.fn(),
+  retirarTecnico: vi.fn(),
+  buscarTecnicosDisponibles: vi.fn().mockResolvedValue([]),
   toastAdd: vi.fn(),
   confirmRequire: vi.fn(),
 }));
+
 vi.mock('@/api/proyectos', () => ({
   obtenerProyecto,
   actualizarEstado,
   getFinanciadores: vi.fn().mockResolvedValue([{ id: 'f-1', nombre: 'Financiador Demo' }]),
+}));
+vi.mock('@/api/equipo', () => ({
+  obtenerEquipo,
+  asignarTecnico,
+  retirarTecnico,
+  buscarTecnicosDisponibles,
 }));
 vi.mock('primevue/usetoast', () => ({ useToast: () => ({ add: toastAdd }) }));
 vi.mock('primevue/useconfirm', () => ({ useConfirm: () => ({ require: confirmRequire }) }));
@@ -54,7 +82,10 @@ async function montar(rol: Rol = 'director') {
   useAuthStore().setRole(rol);
   const wrapper = mount(DetalleProyectoView, {
     props: { id: ID },
-    global: { plugins: [pinia, PrimeVue], stubs: { RouterLink: true } },
+    global: {
+      plugins: [pinia, PrimeVue],
+      stubs: { RouterLink: true, AutoComplete: true, DataTable: false },
+    },
   });
   await flushPromises();
   return wrapper;
@@ -64,7 +95,10 @@ const tag = (w: Awaited<ReturnType<typeof montar>>) => w.get('[data-test="tag-es
 const selector = (w: Awaited<ReturnType<typeof montar>>) => w.findComponent(SelectButton);
 
 describe('DetalleProyectoView', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    obtenerEquipo.mockResolvedValue([tecnicoDemo]);
+  });
 
   it('muestra el estado actual en el Tag y permite al Director cambiarlo', async () => {
     obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
@@ -150,5 +184,57 @@ describe('DetalleProyectoView', () => {
 
     expect(selector(wrapper).props('disabled')).toBe(true);
     expect(wrapper.find('[data-test="aviso-solo-lectura"]').exists()).toBe(false);
+  });
+
+  describe('Equipo Técnico (SGP-70)', () => {
+    it('renderiza la tabla con los técnicos del equipo', async () => {
+      obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
+      const wrapper = await montar();
+
+      expect(obtenerEquipo).toHaveBeenCalledWith(ID);
+      expect(wrapper.find('[data-test="seccion-equipo"]').exists()).toBe(true);
+      expect(wrapper.find('[data-test="tabla-equipo"]').exists()).toBe(true);
+      expect(wrapper.text()).toContain('Técnico Demo');
+      expect(wrapper.text()).toContain('tecnico@serfamilia.test');
+    });
+
+    it('al retirar, abre ConfirmDialog y solo llama a la API si se acepta', async () => {
+      obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
+      retirarTecnico.mockResolvedValue(undefined);
+      obtenerEquipo.mockResolvedValueOnce([tecnicoDemo]).mockResolvedValueOnce([]);
+      const wrapper = await montar();
+
+      await wrapper.get('[data-test="btn-retirar"]').trigger('click');
+      expect(confirmRequire).toHaveBeenCalledWith(
+        expect.objectContaining({ header: 'Retirar del equipo' }),
+      );
+      expect(retirarTecnico).not.toHaveBeenCalled();
+
+      confirmRequire.mock.calls.at(-1)![0].accept();
+      await flushPromises();
+
+      expect(retirarTecnico).toHaveBeenCalledWith(ID, tecnicoDemo.id);
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success', summary: 'Técnico retirado' }));
+      expect(obtenerEquipo).toHaveBeenCalledTimes(2);
+    });
+
+    it('en modo solo lectura oculta el buscador, Asignar y los botones de retirar', async () => {
+      obtenerProyecto.mockResolvedValue(proyecto('CERRADO'));
+      const wrapper = await montar();
+
+      expect(wrapper.find('[data-test="asignar-equipo"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="btn-asignar"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="btn-retirar"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="tabla-equipo"]').exists()).toBe(true);
+      expect(wrapper.text()).toContain('Técnico Demo');
+    });
+
+    it('el Técnico tampoco puede gestionar el equipo (solo lectura por rol)', async () => {
+      obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
+      const wrapper = await montar('tecnico');
+
+      expect(wrapper.find('[data-test="asignar-equipo"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="btn-retirar"]').exists()).toBe(false);
+    });
   });
 });
