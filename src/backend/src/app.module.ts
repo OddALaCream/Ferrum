@@ -11,6 +11,7 @@ import { StorageModule } from './infrastructure/storage/storage.module';
 import { AuditoriaModule } from './modules/auditoria/auditoria.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProyectosModule } from './modules/proyectos/proyectos.module';
+import { UsuariosModule } from './modules/usuarios/usuarios.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ProyectosModule } from './modules/proyectos/proyectos.module';
     HealthModule,
     AuditoriaModule,
     AuthModule,
+    UsuariosModule,
     ProyectosModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

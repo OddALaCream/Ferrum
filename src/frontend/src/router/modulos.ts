@@ -57,6 +57,15 @@ export const MODULOS: readonly Modulo[] = [
     component: () => import('@/views/ReportesView.vue'),
   },
   {
+    name: 'usuarios',
+    path: 'usuarios',
+    titulo: 'Usuarios',
+    descripcion: 'Crea, edita, desactiva y elimina las cuentas del personal.',
+    icono: 'pi pi-users',
+    roles: ['administrador'],
+    component: () => import('@/views/usuarios/UsuariosView.vue'),
+  },
+  {
     name: 'bitacora',
     path: 'bitacora',
     titulo: 'Bitácora',

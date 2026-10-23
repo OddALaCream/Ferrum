@@ -3,7 +3,6 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError } from 'typeorm';
 import { DIRECTOR_SEED_ID } from './constants';
-import { Financiador } from './entities/financiador.entity';
 import { Proyecto, type EstadoProyecto } from './entities/proyecto.entity';
 import { normalizarMonto } from './presupuesto';
 import { ProyectosService } from './proyectos.service';
@@ -33,7 +32,6 @@ describe('ProyectosService.registrarPresupuesto', () => {
       providers: [
         ProyectosService,
         { provide: getRepositoryToken(Proyecto), useValue: proyectos },
-        { provide: getRepositoryToken(Financiador), useValue: { findOne: jest.fn() } },
       ],
     }).compile();
     service = module.get(ProyectosService);
@@ -96,7 +94,6 @@ describe('ProyectosService (crear / estado)', () => {
     save: jest.fn(),
     findOne: jest.fn(),
   };
-  const financiadores = { findOne: jest.fn() };
   let service: ProyectosService;
 
   beforeEach(async () => {
@@ -105,7 +102,6 @@ describe('ProyectosService (crear / estado)', () => {
       providers: [
         ProyectosService,
         { provide: getRepositoryToken(Proyecto), useValue: proyectos },
-        { provide: getRepositoryToken(Financiador), useValue: financiadores },
       ],
     }).compile();
     service = module.get(ProyectosService);
@@ -114,13 +110,11 @@ describe('ProyectosService (crear / estado)', () => {
   const dto = {
     codigo: 'PRY-2026-010',
     nombre: 'Nuevo proyecto',
-    financiadorId: '11111111-1111-4111-8111-111111111111',
     fechaInicio: '2026-01-01',
     fechaFin: '2026-12-31',
   };
 
   it('crea el proyecto en PLANIFICACION con creado_por del Director seed', async () => {
-    financiadores.findOne.mockResolvedValue({ id: dto.financiadorId, activo: true });
     proyectos.save.mockImplementation(async (p) => ({ id: 'nuevo-id', ...p }));
 
     const resultado = await service.crear(dto);
@@ -132,7 +126,6 @@ describe('ProyectosService (crear / estado)', () => {
   });
 
   it('lanza ConflictException (409) si el código ya existe', async () => {
-    financiadores.findOne.mockResolvedValue({ id: dto.financiadorId, activo: true });
     const driverError = Object.assign(new Error('duplicate'), {
       code: '23505',
       constraint: 'uq_proyectos_codigo',

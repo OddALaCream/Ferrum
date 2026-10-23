@@ -116,6 +116,11 @@ export class AuthService {
     if (actual) await this.revocarFamilia(actual.familiaId, new Date());
   }
 
+  /** SGP-54: cierra todas las sesiones abiertas de un usuario (al desactivarlo, eliminarlo o cambiarle la contraseña). */
+  async revocarSesionesDe(usuarioId: string): Promise<void> {
+    await this.tokens.update({ usuarioId, revocadoAt: IsNull() }, { revocadoAt: new Date() });
+  }
+
   async perfil(usuarioId: string): Promise<PerfilSesion> {
     const usuario = await this.usuarios.findOne({ where: { id: usuarioId, activo: true, deletedAt: IsNull() } });
     if (!usuario) throw new UnauthorizedException(MSG_SESION_INVALIDA);

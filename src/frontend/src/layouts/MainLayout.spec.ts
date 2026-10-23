@@ -10,7 +10,7 @@ import MainLayout from './MainLayout.vue';
 
 vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
 
-const TODOS = ['dashboard', 'marco-logico', 'cronograma', 'desembolsos', 'reportes', 'bitacora'];
+const TODOS = ['dashboard', 'marco-logico', 'cronograma', 'desembolsos', 'reportes', 'usuarios', 'bitacora'];
 
 let wrapper: VueWrapper | undefined;
 
