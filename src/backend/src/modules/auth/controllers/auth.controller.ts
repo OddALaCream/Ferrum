@@ -8,6 +8,9 @@ import { COOKIE_REFRESH, RUTA_COOKIE_REFRESH } from '../constants/auth.constants
 import { AuthService } from '../services/auth.service';
 import type { MetadatosCliente, SesionEmitida, UsuarioAutenticado } from '../types/auth.types';
 import { LoginDto } from '../dto/login.dto';
+import { RestablecerPasswordDto } from '../dto/restablecer-password.dto';
+import { SolicitarRestablecimientoDto } from '../dto/solicitar-restablecimiento.dto';
+import { PasswordResetService } from '../services/password-reset.service';
 
 @Controller('auth')
 export class AuthController {
@@ -15,6 +18,7 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
+    private readonly passwordReset: PasswordResetService,
     config: ConfigService,
   ) {
     this.cookieSegura = config.get<string>('NODE_ENV') === 'production';
@@ -51,6 +55,25 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
     await this.auth.cerrarSesion(this.leerCookie(req));
     res.clearCookie(COOKIE_REFRESH, this.opcionesCookie());
+  }
+
+  /** SGP-110: pide el enlace de restablecimiento. Responde 202 siempre igual, exista o no el correo. */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('olvide-mi-contrasena')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async olvideMiContrasena(@Body() dto: SolicitarRestablecimientoDto) {
+    await this.passwordReset.solicitar(dto.email);
+    return { mensaje: 'Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña.' };
+  }
+
+  /** SGP-110 / CP-33: define la nueva contraseña con el token del enlace (un solo uso, 30 min). */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('restablecer-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async restablecerPassword(@Body() dto: RestablecerPasswordDto): Promise<void> {
+    await this.passwordReset.restablecer(dto.token, dto.password);
   }
 
   @Get('me')

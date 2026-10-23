@@ -32,3 +32,13 @@ export async function renovarSesion(): Promise<RespuestaSesion> {
 export async function cerrarSesion(): Promise<void> {
   await http.post('/auth/logout');
 }
+
+/** SGP-110: pide el enlace de restablecimiento. Responde igual exista o no el correo. */
+export async function solicitarRestablecimiento(email: string): Promise<void> {
+  await http.post('/auth/olvide-mi-contrasena', { email });
+}
+
+/** SGP-110 / CP-33: define la nueva contraseña con el token del enlace (un solo uso, 30 min). */
+export async function restablecerPassword(token: string, password: string): Promise<void> {
+  await http.post('/auth/restablecer-password', { token, password });
+}

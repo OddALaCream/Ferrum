@@ -10,7 +10,7 @@ declare module 'vue-router' {
     roles?: readonly Rol[];
     /** `false` cuando la vista dibuja su propio título dentro del contenido. */
     encabezado?: boolean;
-    /** Accesible sin sesión (solo el login). */
+    /** Accesible sin sesión (login y recuperación de contraseña). */
     publica?: boolean;
   }
 }
@@ -23,6 +23,18 @@ export const router = createRouter({
       name: 'login',
       component: () => import('@/views/auth/LoginView.vue'),
       meta: { titulo: 'Iniciar sesión', publica: true },
+    },
+    {
+      path: '/olvide-mi-contrasena',
+      name: 'olvide-contrasena',
+      component: () => import('@/views/auth/OlvideContrasenaView.vue'),
+      meta: { titulo: 'Recuperar contraseña', publica: true },
+    },
+    {
+      path: '/restablecer',
+      name: 'restablecer-password',
+      component: () => import('@/views/auth/RestablecerPasswordView.vue'),
+      meta: { titulo: 'Nueva contraseña', publica: true },
     },
     {
       path: '/',

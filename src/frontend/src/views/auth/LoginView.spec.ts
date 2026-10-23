@@ -31,7 +31,9 @@ function errorHttp(status: number, detail = '') {
 async function montar() {
   const pinia = createPinia();
   setActivePinia(pinia);
-  const wrapper = mount(LoginView, { global: { plugins: [pinia, PrimeVue] } });
+  const wrapper = mount(LoginView, {
+    global: { plugins: [pinia, PrimeVue], stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+  });
   return wrapper;
 }
 
@@ -102,6 +104,17 @@ describe('LoginView (SGP-41)', () => {
     await enviar(wrapper, 'tecnico@serfamilia.test', 'mala');
 
     expect(wrapper.get('[data-test="error-login"]').text()).toBe(detalle);
+  });
+
+  it('SGP-110: ofrece el enlace "¿Olvidaste tu contraseña?"', async () => {
+    const wrapper = await montar();
+    expect(wrapper.get('[data-test="olvide"]').text()).toContain('¿Olvidaste tu contraseña?');
+  });
+
+  it('SGP-110: avisa que la contraseña se actualizó cuando llega desde el restablecimiento', async () => {
+    query.value = { restablecida: '1' };
+    const wrapper = await montar();
+    expect(wrapper.get('[data-test="aviso"]').text()).toContain('Tu contraseña se actualizó');
   });
 
   it('avisa cuando la sesión venció', async () => {
