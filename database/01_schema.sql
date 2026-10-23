@@ -16,7 +16,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- crypt() para el seed de desarrollo
 -- 1. TIPOS ENUMERADOS
 -- ---------------------------------------------------------------------
 CREATE TYPE rol_usuario      AS ENUM ('DIRECTOR', 'ADMINISTRATIVO', 'TECNICO', 'FINANCIADOR');
-CREATE TYPE moneda_tipo      AS ENUM ('BOB', 'USD');
+CREATE TYPE moneda_tipo      AS ENUM ('BOB', 'USD', 'EUR');    -- RF-02
 CREATE TYPE estado_proyecto  AS ENUM ('PLANIFICACION', 'EN_EJECUCION', 'PAUSADO', 'CERRADO');
 CREATE TYPE estado_actividad AS ENUM ('PENDIENTE', 'EN_CURSO', 'COMPLETADA', 'RETRASADA');
 CREATE TYPE estado_tarea     AS ENUM ('PENDIENTE', 'EN_CURSO', 'COMPLETADA');

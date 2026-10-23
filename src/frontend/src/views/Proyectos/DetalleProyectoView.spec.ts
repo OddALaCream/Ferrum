@@ -38,11 +38,17 @@ const {
   confirmRequire: vi.fn(),
 }));
 
-vi.mock('@/api/proyectos', () => ({
-  obtenerProyecto,
-  actualizarEstado,
-  getFinanciadores: vi.fn().mockResolvedValue([{ id: 'f-1', nombre: 'Financiador Demo' }]),
-}));
+vi.mock('@/api/proyectos', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/api/proyectos')>();
+  return {
+    MONEDAS: real.MONEDAS,
+    motivoMontoInvalido: real.motivoMontoInvalido,
+    registrarPresupuesto: vi.fn(),
+    obtenerProyecto,
+    actualizarEstado,
+    getFinanciadores: vi.fn().mockResolvedValue([{ id: 'f-1', nombre: 'Financiador Demo' }]),
+  };
+});
 vi.mock('@/api/equipo', () => ({
   obtenerEquipo,
   asignarTecnico,
@@ -59,7 +65,7 @@ const proyecto = (estado: EstadoProyecto): Proyecto => ({
   descripcion: null,
   objetivoGeneral: null,
   financiadorId: 'f-1',
-  presupuestoTotal: 100000,
+  presupuestoTotal: '100000.00',
   moneda: 'BOB',
   fechaInicio: '2026-01-01',
   fechaFin: '2026-12-31',
@@ -84,7 +90,7 @@ async function montar(rol: Rol = 'director') {
     props: { id: ID },
     global: {
       plugins: [pinia, PrimeVue],
-      stubs: { RouterLink: true, AutoComplete: true, DataTable: false },
+      stubs: { RouterLink: true, AutoComplete: true, DataTable: false, Select: true },
     },
   });
   await flushPromises();
@@ -184,6 +190,27 @@ describe('DetalleProyectoView', () => {
 
     expect(selector(wrapper).props('disabled')).toBe(true);
     expect(wrapper.find('[data-test="aviso-solo-lectura"]').exists()).toBe(false);
+  });
+
+  describe('Presupuesto (SGP-7)', () => {
+    it('el Director ve el presupuesto actual y el formulario para registrarlo', async () => {
+      obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
+      const wrapper = await montar();
+
+      expect(wrapper.get('[data-test="monto-actual"]').text()).toMatch(/100\.000,00/);
+      expect(wrapper.find('[data-test="form-presupuesto"]').exists()).toBe(true);
+    });
+
+    it.each<[string, EstadoProyecto, Rol]>([
+      ['proyecto cerrado', 'CERRADO', 'director'],
+      ['rol Técnico', 'EN_EJECUCION', 'tecnico'],
+    ])('con %s el presupuesto es de solo lectura', async (_caso, estado, rol) => {
+      obtenerProyecto.mockResolvedValue(proyecto(estado));
+      const wrapper = await montar(rol);
+
+      expect(wrapper.find('[data-test="seccion-presupuesto"]').exists()).toBe(true);
+      expect(wrapper.find('[data-test="form-presupuesto"]').exists()).toBe(false);
+    });
   });
 
   describe('Equipo Técnico (SGP-70)', () => {

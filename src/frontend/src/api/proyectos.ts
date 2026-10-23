@@ -3,6 +3,10 @@ import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios
 /** Enum `estado_proyecto` de PostgreSQL. */
 export type EstadoProyecto = 'PLANIFICACION' | 'EN_EJECUCION' | 'PAUSADO' | 'CERRADO';
 
+/** Enum `moneda_tipo` de PostgreSQL (RF-02). */
+export const MONEDAS = ['BOB', 'USD', 'EUR'] as const;
+export type Moneda = (typeof MONEDAS)[number];
+
 export interface Financiador {
   id: string;
   nombre: string;
@@ -21,9 +25,17 @@ export interface Proyecto extends CreateProyectoDto {
   id: string;
   descripcion: string | null;
   objetivoGeneral: string | null;
-  presupuestoTotal: number;
-  moneda: 'BOB' | 'USD';
+  /** NUMERIC(14,2) como texto ("850000.50") para no perder precisión. */
+  presupuestoTotal: string;
+  moneda: Moneda;
   estado: EstadoProyecto;
+}
+
+/** Cuerpo de PATCH /proyectos/:id/presupuesto (RF-02). */
+export interface RegistrarPresupuestoDto {
+  /** Monto con hasta dos decimales, como texto: "850000.50". */
+  monto: string;
+  moneda: Moneda;
 }
 
 /** Cuerpo de error que devuelve la API (RFC 7807, ver ProblemDetailsFilter). */
@@ -51,6 +63,7 @@ export const FINANCIADORES_SIMULADOS: readonly Financiador[] = [
 //   crearProyecto:    http.post<Proyecto>('/proyectos', dto)
 //   obtenerProyecto:  http.get<Proyecto>(`/proyectos/${id}`)
 //   actualizarEstado: http.patch<Proyecto>(`/proyectos/${id}/estado`, { estado })
+//   registrarPresupuesto: http.patch<Proyecto>(`/proyectos/${id}/presupuesto`, dto)   (ya disponible, SGP-7)
 // ---------------------------------------------------------------------
 
 const LATENCIA_MS = 600;
@@ -65,7 +78,7 @@ const proyectos = new Map<string, Proyecto>([
       descripcion: 'Proyecto de ejemplo para desarrollo y pruebas.',
       objetivoGeneral: 'Mejorar las condiciones familiares en la región',
       financiadorId: '11111111-1111-4111-8111-111111111111',
-      presupuestoTotal: 100000,
+      presupuestoTotal: '100000.00',
       moneda: 'BOB',
       fechaInicio: '2026-01-01',
       fechaFin: '2026-12-31',
@@ -75,6 +88,22 @@ const proyectos = new Map<string, Proyecto>([
 ]);
 
 const esperar = () => new Promise((r) => setTimeout(r, LATENCIA_MS));
+
+/**
+ * Misma validación que el backend (RegistrarPresupuestoDto): devuelve el motivo
+ * por el que el monto no es válido, o `null` si lo es. NUMERIC(14,2) → 12 enteros y 2 decimales.
+ */
+export function motivoMontoInvalido(monto: string | null | undefined): string | null {
+  if (monto === null || monto === undefined || monto.trim() === '') return 'El monto del presupuesto es obligatorio.';
+  if (monto.trim().startsWith('-')) return 'El monto del presupuesto no puede ser negativo.';
+  if (!/^\d+(\.\d+)?$/.test(monto)) {
+    return 'El monto del presupuesto debe ser un número con punto decimal (p. ej. 850000.50).';
+  }
+  if (!/^\d{1,12}(\.\d{1,2})?$/.test(monto)) {
+    return 'El monto del presupuesto admite como máximo 12 dígitos enteros y 2 decimales.';
+  }
+  return null;
+}
 
 function errorHttp(
   method: 'get' | 'post' | 'patch',
@@ -116,7 +145,7 @@ export async function crearProyecto(dto: CreateProyectoDto): Promise<Proyecto> {
     id: crypto.randomUUID(),
     descripcion: null,
     objetivoGeneral: null,
-    presupuestoTotal: 0,
+    presupuestoTotal: '0.00',
     moneda: 'BOB',
     estado: 'PLANIFICACION',
   };
@@ -144,5 +173,30 @@ export async function actualizarEstado(id: string, nuevoEstado: EstadoProyecto):
     );
   }
   proyecto.estado = nuevoEstado;
+  return { ...proyecto };
+}
+
+/** RF-02 / CP-02: registra el presupuesto total aprobado con su moneda. */
+export async function registrarPresupuesto(id: string, dto: RegistrarPresupuestoDto): Promise<Proyecto> {
+  await esperar();
+  const url = `/proyectos/${id}/presupuesto`;
+  const proyecto = buscar('patch', url, id);
+  const motivo = motivoMontoInvalido(dto.monto);
+  if (motivo) throw errorHttp('patch', url, 400, 'Bad Request', motivo);
+  if (!MONEDAS.includes(dto.moneda)) {
+    throw errorHttp('patch', url, 400, 'Bad Request', `La moneda debe ser una de: ${MONEDAS.join(', ')}.`);
+  }
+  if (proyecto.estado === 'CERRADO') {
+    throw errorHttp(
+      'patch',
+      url,
+      422,
+      'Unprocessable Entity',
+      'No se puede modificar el presupuesto de un proyecto cerrado (RN-09).',
+    );
+  }
+  const [enteros, decimales = ''] = dto.monto.split('.');
+  proyecto.presupuestoTotal = `${BigInt(enteros)}.${decimales.padEnd(2, '0')}`;
+  proyecto.moneda = dto.moneda;
   return { ...proyecto };
 }

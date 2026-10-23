@@ -8,6 +8,7 @@ import { validateEnv } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './infrastructure/mail/mail.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
+import { ProyectosModule } from './modules/proyectos/proyectos.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { StorageModule } from './infrastructure/storage/storage.module';
     StorageModule,
     MailModule,
     HealthModule,
+    ProyectosModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

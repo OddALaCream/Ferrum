@@ -28,6 +28,7 @@ import {
 } from '@/api/proyectos';
 import { useAuthStore } from '@/stores/auth';
 import { ESTADOS_PROYECTO, OPCIONES_ESTADO } from './estadoProyecto';
+import PresupuestoProyecto from './PresupuestoProyecto.vue';
 
 const props = defineProps<{ id: string }>();
 
@@ -69,10 +70,6 @@ function detalleDe(e: unknown): string | undefined {
 function formatoFecha(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatoMonto(p: Proyecto): string {
-  return new Intl.NumberFormat('es-BO', { style: 'currency', currency: p.moneda }).format(p.presupuestoTotal);
 }
 
 async function cargarEquipo() {
@@ -394,7 +391,7 @@ watch(() => props.id, () => cargar(), { immediate: true });
         <h2 class="text-base font-semibold text-slate-800">
           Información general
         </h2>
-        <dl class="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-3">
+        <dl class="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <div>
             <dt class="text-xs font-medium uppercase tracking-wider text-slate-500">
               Financiador
@@ -411,17 +408,9 @@ watch(() => props.id, () => cargar(), { immediate: true });
               {{ formatoFecha(proyecto.fechaInicio) }} – {{ formatoFecha(proyecto.fechaFin) }}
             </dd>
           </div>
-          <div>
-            <dt class="text-xs font-medium uppercase tracking-wider text-slate-500">
-              Presupuesto total
-            </dt>
-            <dd class="mt-1 text-sm font-medium tabular-nums text-slate-800">
-              {{ formatoMonto(proyecto) }}
-            </dd>
-          </div>
           <div
             v-if="proyecto.objetivoGeneral"
-            class="sm:col-span-3"
+            class="sm:col-span-2"
           >
             <dt class="text-xs font-medium uppercase tracking-wider text-slate-500">
               Objetivo general
@@ -432,6 +421,12 @@ watch(() => props.id, () => cargar(), { immediate: true });
           </div>
         </dl>
       </section>
+
+      <PresupuestoProyecto
+        :proyecto="proyecto"
+        :editable="!soloLectura"
+        @actualizado="proyecto = $event"
+      />
 
       <section
         class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5"
