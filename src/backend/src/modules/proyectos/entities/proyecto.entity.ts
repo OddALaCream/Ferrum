@@ -10,7 +10,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { MONEDAS, type Moneda } from '../presupuesto';
-import { Financiador } from './financiador.entity';
 import { ProyectoEquipo } from './proyecto-equipo.entity';
 import { Usuario } from './usuario.entity';
 
@@ -34,13 +33,6 @@ export class Proyecto {
 
   @Column({ name: 'objetivo_general', type: 'text', nullable: true })
   objetivoGeneral!: string | null;
-
-  @Column({ name: 'financiador_id', type: 'uuid' })
-  financiadorId!: string;
-
-  @ManyToOne(() => Financiador, (f) => f.proyectos, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'financiador_id' })
-  financiador!: Financiador;
 
   /** NUMERIC(14,2). El driver pg lo devuelve como texto, así no se pierde precisión (RF-02 / SGP-7). */
   @Column({ name: 'presupuesto_total', type: 'numeric', precision: 14, scale: 2, default: 0 })

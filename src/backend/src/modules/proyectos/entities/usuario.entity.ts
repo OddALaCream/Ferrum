@@ -1,13 +1,17 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { Financiador } from './financiador.entity';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Proyecto } from './proyecto.entity';
 import { ProyectoEquipo } from './proyecto-equipo.entity';
 
+/**
+ * Roles del sistema:
+ * - ADMINISTRADOR: gestiona usuarios, proyectos y marco lógico; ve los paneles (MIS/DSS).
+ * - SUPERVISOR: operativo-supervisor; control presupuestario, desembolsos y reportes (ERP).
+ * - TECNICO: técnico de campo; registra actividades y avances (TPS).
+ */
 export enum RolUsuario {
-  DIRECTOR = 'DIRECTOR',
-  ADMINISTRATIVO = 'ADMINISTRATIVO',
+  ADMINISTRADOR = 'ADMINISTRADOR',
+  SUPERVISOR = 'SUPERVISOR',
   TECNICO = 'TECNICO',
-  FINANCIADOR = 'FINANCIADOR',
 }
 
 @Entity({ name: 'usuarios' })
@@ -26,13 +30,6 @@ export class Usuario {
 
   @Column({ type: 'enum', enum: RolUsuario, enumName: 'rol_usuario' })
   rol!: RolUsuario;
-
-  @Column({ name: 'financiador_id', type: 'uuid', nullable: true })
-  financiadorId!: string | null;
-
-  @ManyToOne(() => Financiador, (f) => f.usuarios, { nullable: true, onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'financiador_id' })
-  financiador!: Financiador | null;
 
   @Column({ type: 'boolean', default: true })
   activo!: boolean;

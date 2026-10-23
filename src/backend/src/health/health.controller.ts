@@ -1,9 +1,11 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService, HealthIndicatorResult, TypeOrmHealthIndicator } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from '../common/decorators/public.decorator';
 import { MailService } from '../infrastructure/mail/mail.service';
 import { StorageAdapter } from '../infrastructure/storage/storage.adapter';
 
+@Public()
 @SkipThrottle()
 @Controller('health')
 export class HealthController {

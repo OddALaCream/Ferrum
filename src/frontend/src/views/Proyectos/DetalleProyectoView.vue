@@ -19,10 +19,8 @@ import {
 } from '@/api/equipo';
 import {
   actualizarEstado,
-  getFinanciadores,
   obtenerProyecto,
   type EstadoProyecto,
-  type Financiador,
   type ProblemDetails,
   type Proyecto,
 } from '@/api/proyectos';
@@ -37,7 +35,6 @@ const toast = useToast();
 const confirm = useConfirm();
 
 const proyecto = ref<Proyecto | null>(null);
-const financiadores = ref<Financiador[]>([]);
 const equipo = ref<TecnicoProyecto[]>([]);
 const cargando = ref(true);
 const cargandoEquipo = ref(false);
@@ -53,13 +50,10 @@ const sugerencias = ref<{ id: string; nombre: string; email: string }[]>([]);
  */
 const estadoSeleccionado = ref<EstadoProyecto | null>(null);
 
-const esDirector = computed(() => auth.role === 'director');
+const esAdministrador = computed(() => auth.role === 'administrador');
 const cerrado = computed(() => proyecto.value?.estado === 'CERRADO');
-const soloLectura = computed(() => cerrado.value || !esDirector.value);
+const soloLectura = computed(() => cerrado.value || !esAdministrador.value);
 const estadoActual = computed(() => (proyecto.value ? ESTADOS_PROYECTO[proyecto.value.estado] : null));
-const nombreFinanciador = computed(
-  () => financiadores.value.find((f) => f.id === proyecto.value?.financiadorId)?.nombre ?? '—',
-);
 
 function detalleDe(e: unknown): string | undefined {
   const detail = isAxiosError<ProblemDetails>(e) ? e.response?.data?.detail : undefined;
@@ -93,9 +87,7 @@ async function cargar(silencioso = false) {
   if (!silencioso) cargando.value = true;
   noEncontrado.value = false;
   try {
-    const [p, f] = await Promise.all([obtenerProyecto(props.id), getFinanciadores()]);
-    proyecto.value = p;
-    financiadores.value = f;
+    proyecto.value = await obtenerProyecto(props.id);
     await cargarEquipo();
   } catch (e) {
     if (isAxiosError(e) && e.response?.status === 404) {
@@ -379,10 +371,10 @@ watch(() => props.id, () => cargar(), { immediate: true });
             </div>
           </div>
           <p
-            v-else-if="!esDirector"
+            v-else-if="!esAdministrador"
             class="mt-3 text-xs text-slate-500"
           >
-            Solo el Director puede cambiar el estado del proyecto.
+            Solo el Administrador puede cambiar el estado del proyecto.
           </p>
         </div>
       </section>
@@ -392,14 +384,6 @@ watch(() => props.id, () => cargar(), { immediate: true });
           Información general
         </h2>
         <dl class="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2">
-          <div>
-            <dt class="text-xs font-medium uppercase tracking-wider text-slate-500">
-              Financiador
-            </dt>
-            <dd class="mt-1 text-sm text-slate-800">
-              {{ nombreFinanciador }}
-            </dd>
-          </div>
           <div>
             <dt class="text-xs font-medium uppercase tracking-wider text-slate-500">
               Periodo de ejecución

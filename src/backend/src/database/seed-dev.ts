@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { config as loadEnv } from 'dotenv';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DataSource } from 'typeorm';
 import { buildDataSourceOptions } from '../config/database.config';
@@ -15,9 +15,14 @@ async function main() {
   const ds = new DataSource(buildDataSourceOptions(process.env));
   await ds.initialize();
   try {
-    const sql = readFileSync(resolve(__dirname, '../../../../database/02_seed_dev.sql'), 'utf8');
-    await ds.query(sql);
-    console.log('Datos de desarrollo cargados. Usuarios: director@serfamilia.test, tecnico@serfamilia.test, financiador@serfamilia.test');
+    for (const archivo of ['02_seed_dev.sql', '03_usuarios_demo.sql']) {
+      const ruta = resolve(__dirname, '../../../../database', archivo);
+      if (existsSync(ruta)) await ds.query(readFileSync(ruta, 'utf8'));
+    }
+    console.log(
+      'Datos de desarrollo cargados. Usuarios (contraseña Serfamilia2026): ' +
+        'admin@serfamilia.test, supervisor@serfamilia.test, tecnico@serfamilia.test',
+    );
   } finally {
     await ds.destroy();
   }

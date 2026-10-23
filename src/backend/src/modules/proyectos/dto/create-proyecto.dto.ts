@@ -1,7 +1,6 @@
 import {
   IsNotEmpty,
   IsString,
-  IsUUID,
   Matches,
   MaxLength,
   Validate,
@@ -35,9 +34,6 @@ export class CreateProyectoDto {
   @IsNotEmpty()
   @MaxLength(250)
   nombre!: string;
-
-  @IsUUID()
-  financiadorId!: string;
 
   @Matches(FECHA_ISO, { message: 'fechaInicio debe tener el formato YYYY-MM-DD' })
   fechaInicio!: string;

@@ -27,7 +27,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Marco Lógico',
     descripcion: 'Objetivos, resultados, indicadores y supuestos del proyecto.',
     icono: 'pi pi-sitemap',
-    roles: ['director'],
+    roles: ['administrador'],
     component: () => import('@/views/MarcoLogicoView.vue'),
   },
   {
@@ -36,7 +36,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Cronograma y Actividades',
     descripcion: 'Planificación y seguimiento de las actividades programadas.',
     icono: 'pi pi-calendar',
-    roles: ['tecnico', 'director'],
+    roles: ['tecnico', 'administrador'],
     component: () => import('@/views/CronogramaView.vue'),
   },
   {
@@ -45,7 +45,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Finanzas y Desembolsos',
     descripcion: 'Control presupuestario y registro de desembolsos.',
     icono: 'pi pi-dollar',
-    roles: ['administrativo', 'director'],
+    roles: ['supervisor', 'administrador'],
     component: () => import('@/views/DesembolsosView.vue'),
   },
   {
@@ -62,7 +62,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Bitácora',
     descripcion: 'Registro inalterable de quién modificó qué y cuándo (RF-34).',
     icono: 'pi pi-history',
-    roles: ['director'],
+    roles: ['administrador'],
     component: () => import('@/views/Bitacora/BitacoraView.vue'),
   },
 ];

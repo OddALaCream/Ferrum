@@ -26,7 +26,7 @@ onMounted(() => app.comprobarApi());
       <div class="flex flex-wrap gap-2">
         <!-- Temporal hasta que exista el listado de proyectos -->
         <RouterLink
-          v-if="auth.tieneAcceso(['director', 'tecnico'])"
+          v-if="auth.tieneAcceso(['administrador', 'tecnico'])"
           v-slot="{ navigate }"
           :to="{ name: 'detalle-proyecto', params: { id: PROYECTO_DEMO_SEED_ID } }"
           custom
@@ -42,7 +42,7 @@ onMounted(() => app.comprobarApi());
           />
         </RouterLink>
         <RouterLink
-          v-if="auth.tieneAcceso(['director'])"
+          v-if="auth.tieneAcceso(['administrador'])"
           v-slot="{ navigate }"
           :to="{ name: 'crear-proyecto' }"
           custom

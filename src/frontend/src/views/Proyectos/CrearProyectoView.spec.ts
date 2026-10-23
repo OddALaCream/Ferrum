@@ -6,14 +6,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CrearProyectoView from './CrearProyectoView.vue';
 
 const { crearProyecto, toastAdd } = vi.hoisted(() => ({ crearProyecto: vi.fn(), toastAdd: vi.fn() }));
-vi.mock('@/api/proyectos', () => ({ crearProyecto, getFinanciadores: vi.fn().mockResolvedValue([]) }));
-const BID = '11111111-1111-4111-8111-111111111112';
+vi.mock('@/api/proyectos', () => ({ crearProyecto }));
 
 vi.mock('primevue/usetoast', () => ({ useToast: () => ({ add: toastAdd }) }));
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
 
 type Vm = {
-  form: { codigo: string; nombre: string; financiadorId: string | null; fechaInicio: Date | null; fechaFin: Date | null };
+  form: { codigo: string; nombre: string; fechaInicio: Date | null; fechaFin: Date | null };
 };
 
 async function montarConDatos(datos: Partial<Vm['form']> = {}) {
@@ -23,7 +22,6 @@ async function montarConDatos(datos: Partial<Vm['form']> = {}) {
   Object.assign((wrapper.vm as unknown as Vm).form, {
     codigo: 'PRY-2026-001',
     nombre: 'Fortalecimiento familiar',
-    financiadorId: BID,
     fechaInicio: new Date(2026, 0, 10),
     fechaFin: new Date(2026, 11, 31),
     ...datos,
@@ -44,7 +42,6 @@ describe('CrearProyectoView', () => {
     expect(crearProyecto).toHaveBeenCalledWith({
       codigo: 'PRY-2026-001',
       nombre: 'Fortalecimiento familiar',
-      financiadorId: BID,
       fechaInicio: '2026-01-10',
       fechaFin: '2026-12-31',
     });

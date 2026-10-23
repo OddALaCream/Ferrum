@@ -26,7 +26,6 @@ const proyecto = (cambios: Partial<Proyecto> = {}): Proyecto => ({
   nombre: 'Proyecto de demostración',
   descripcion: null,
   objetivoGeneral: null,
-  financiadorId: 'f-1',
   presupuestoTotal: '100000.00',
   moneda: 'BOB',
   fechaInicio: '2026-01-01',

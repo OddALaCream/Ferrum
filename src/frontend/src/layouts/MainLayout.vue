@@ -4,14 +4,17 @@ import Menu from 'primevue/menu';
 import type { MenuItem } from 'primevue/menuitem';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
+import LogoSerFamilia from '@/components/auth/LogoSerFamilia.vue';
 import { MODULOS } from '@/router/modulos';
-import { ROLES, useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth';
 
 const CLAVE_COLAPSADO = 'sgp.sidebar.colapsado';
 
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const toast = useToast();
 
 /** Solo escritorio (lg+): sidebar reducido a iconos. */
 const colapsado = ref(localStorage.getItem(CLAVE_COLAPSADO) === '1');
@@ -30,14 +33,26 @@ const iniciales = computed(() =>
 
 const opcionesPerfil = computed<MenuItem[]>(() => [
   {
-    label: 'Ver como (rol simulado)',
-    items: ROLES.map((r) => ({
-      label: r.label,
-      icon: r.value === auth.role ? 'pi pi-check' : 'pi pi-fw',
-      command: () => auth.setRole(r.value),
-    })),
+    label: auth.usuario?.email ?? '',
+    items: [{ label: 'Cerrar sesión', icon: 'pi pi-sign-out', command: salir }],
   },
 ]);
+
+/** SGP-45: al salir se revoca la sesión; para volver hay que ingresar las credenciales. */
+async function salir() {
+  try {
+    await auth.cerrarSesion();
+  } catch {
+    // La sesión local ya se borró; si el servidor no respondió, el refresh token vence solo
+    toast.add({
+      severity: 'warn',
+      summary: 'Sesión cerrada en este equipo',
+      detail: 'No se pudo avisar al servidor. Si usas un equipo compartido, cierra también el navegador.',
+      life: 6000,
+    });
+  }
+  await router.replace({ name: 'login', query: { salida: '1' } });
+}
 
 function alternarColapsado() {
   colapsado.value = !colapsado.value;
@@ -49,14 +64,6 @@ function cerrarConEscape(e: KeyboardEvent) {
 }
 
 watch(() => route.fullPath, () => (menuMovilAbierto.value = false));
-
-// Al cambiar de rol, salir del módulo actual si el nuevo rol ya no tiene acceso
-watch(
-  () => auth.role,
-  () => {
-    if (!auth.tieneAcceso(route.meta.roles)) router.replace({ name: 'dashboard' });
-  },
-);
 
 onMounted(() => window.addEventListener('keydown', cerrarConEscape));
 onBeforeUnmount(() => window.removeEventListener('keydown', cerrarConEscape));
@@ -81,18 +88,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', cerrarConEscape));
     <aside
       id="sidebar"
       :class="[
-        'fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col bg-slate-900 transition-all duration-300 ease-in-out',
+        'fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col bg-[#22123f] transition-all duration-300 ease-in-out',
         'lg:static lg:translate-x-0',
         menuMovilAbierto ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
         colapsado && 'lg:w-20',
       ]"
     >
       <div class="flex h-16 shrink-0 items-center gap-3 border-b border-white/10 px-5">
-        <span
-          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold tracking-tight text-white shadow-sm shadow-black/30"
-        >
-          SF
-        </span>
+        <LogoSerFamilia
+          :animado="false"
+          class="h-10 w-9 shrink-0"
+        />
         <div
           class="min-w-0 flex-1 leading-tight"
           :class="{ 'lg:hidden': colapsado }"

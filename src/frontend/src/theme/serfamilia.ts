@@ -1,21 +1,21 @@
 import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
 
-// Rojo vino institucional (#9B2226 = tono 700). Reemplaza el esmeralda por defecto de Aura.
+// Morado institucional (#5B2BA8 = tono 700). El rojo del logo (#B3222B) queda como acento.
 export const SerfamiliaPreset = definePreset(Aura, {
   semantic: {
     primary: {
-      50: '#fdf2f2',
-      100: '#fce4e4',
-      200: '#f9cdce',
-      300: '#f4a9ab',
-      400: '#eb777a',
-      500: '#df4c50',
-      600: '#bd2d31',
-      700: '#9b2226',
-      800: '#811f23',
-      900: '#6c1e21',
-      950: '#3b0b0d',
+      50: '#f6f2fd',
+      100: '#ece4fb',
+      200: '#dacbf7',
+      300: '#bfa6f0',
+      400: '#9f7ae6',
+      500: '#8152d9',
+      600: '#6c3cc4',
+      700: '#5b2ba8',
+      800: '#4b2489',
+      900: '#3e1f6e',
+      950: '#2a1458',
     },
     colorScheme: {
       light: {

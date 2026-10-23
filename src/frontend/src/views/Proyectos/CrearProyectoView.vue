@@ -4,16 +4,10 @@ import Button from 'primevue/button';
 import DatePicker from 'primevue/datepicker';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
-import Select from 'primevue/select';
 import { useToast } from 'primevue/usetoast';
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import {
-  crearProyecto,
-  getFinanciadores,
-  type Financiador,
-  type ProblemDetails,
-} from '@/api/proyectos';
+import { crearProyecto, type ProblemDetails } from '@/api/proyectos';
 
 const CODIGO_MAX = 30;
 const NOMBRE_MAX = 250;
@@ -21,7 +15,6 @@ const NOMBRE_MAX = 250;
 interface FormProyecto {
   codigo: string;
   nombre: string;
-  financiadorId: string | null;
   fechaInicio: Date | null;
   fechaFin: Date | null;
 }
@@ -29,7 +22,6 @@ interface FormProyecto {
 const vacio = (): FormProyecto => ({
   codigo: '',
   nombre: '',
-  financiadorId: null,
   fechaInicio: null,
   fechaFin: null,
 });
@@ -38,7 +30,6 @@ const router = useRouter();
 const toast = useToast();
 
 const form = reactive<FormProyecto>(vacio());
-const financiadores = ref<Financiador[]>([]);
 const guardando = ref(false);
 /** Los errores se muestran después del primer intento de guardar. */
 const enviado = ref(false);
@@ -56,7 +47,6 @@ const errores = computed(() => {
   if (!nombre) e.nombre = 'El nombre es obligatorio.';
   else if (nombre.length > NOMBRE_MAX) e.nombre = `Máximo ${NOMBRE_MAX} caracteres.`;
 
-  if (form.financiadorId === null) e.financiadorId = 'Seleccione un financiador.';
   if (!form.fechaInicio) e.fechaInicio = 'La fecha de inicio es obligatoria.';
   if (!form.fechaFin) e.fechaFin = 'La fecha de fin es obligatoria.';
   else if (form.fechaInicio && form.fechaFin < form.fechaInicio) {
@@ -89,7 +79,6 @@ async function guardar() {
     const proyecto = await crearProyecto({
       codigo: form.codigo.trim(),
       nombre: form.nombre.trim(),
-      financiadorId: form.financiadorId!,
       fechaInicio: aFechaIso(form.fechaInicio!),
       fechaFin: aFechaIso(form.fechaFin!),
     });
@@ -134,10 +123,6 @@ function cancelar() {
   if (window.history.state?.back) router.back();
   else router.push({ name: 'dashboard' });
 }
-
-onMounted(async () => {
-  financiadores.value = await getFinanciadores();
-});
 </script>
 
 <template>
@@ -192,37 +177,6 @@ onMounted(async () => {
             </Message>
             <span class="ml-auto shrink-0 text-slate-400">{{ form.codigo.length }}/{{ CODIGO_MAX }}</span>
           </div>
-        </div>
-
-        <div>
-          <label
-            id="financiador-label"
-            for="financiador"
-            class="mb-1.5 block text-sm font-medium text-slate-700"
-          >
-            Financiador <span class="text-primary">*</span>
-          </label>
-          <Select
-            v-model="form.financiadorId"
-            input-id="financiador"
-            aria-labelledby="financiador-label"
-            :options="financiadores"
-            option-label="nombre"
-            option-value="id"
-            placeholder="Seleccione un financiador"
-            :invalid="!!visible('financiadorId')"
-            :disabled="guardando"
-            fluid
-          />
-          <Message
-            v-if="visible('financiadorId')"
-            class="mt-1"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ visible('financiadorId') }}
-          </Message>
         </div>
 
         <div class="sm:col-span-2">

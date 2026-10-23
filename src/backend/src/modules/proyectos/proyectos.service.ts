@@ -10,7 +10,6 @@ import { DIRECTOR_SEED_ID } from './constants';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { RegistrarPresupuestoDto } from './dto/registrar-presupuesto.dto';
 import { UpdateEstadoProyectoDto } from './dto/update-estado-proyecto.dto';
-import { Financiador } from './entities/financiador.entity';
 import { Proyecto } from './entities/proyecto.entity';
 import { normalizarMonto } from './presupuesto';
 
@@ -36,22 +35,12 @@ export class ProyectosService {
   constructor(
     @InjectRepository(Proyecto)
     private readonly proyectos: Repository<Proyecto>,
-    @InjectRepository(Financiador)
-    private readonly financiadores: Repository<Financiador>,
   ) {}
 
   async crear(dto: CreateProyectoDto): Promise<Proyecto> {
-    const financiador = await this.financiadores.findOne({
-      where: { id: dto.financiadorId, activo: true },
-    });
-    if (!financiador) {
-      throw new NotFoundException('El financiador indicado no existe o no está activo.');
-    }
-
     const proyecto = this.proyectos.create({
       codigo: dto.codigo.trim(),
       nombre: dto.nombre.trim(),
-      financiadorId: dto.financiadorId,
       fechaInicio: dto.fechaInicio,
       fechaFin: dto.fechaFin,
       estado: 'PLANIFICACION',

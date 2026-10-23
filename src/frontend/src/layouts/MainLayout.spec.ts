@@ -1,9 +1,11 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import PrimeVue from 'primevue/config';
+import ToastService from 'primevue/toastservice';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { router } from '@/router';
-import { useAuthStore, type Rol } from '@/stores/auth';
+import type { Rol } from '@/stores/auth';
+import { sesionDePrueba } from '@/test/helpers/sesion';
 import MainLayout from './MainLayout.vue';
 
 vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
@@ -15,11 +17,11 @@ let wrapper: VueWrapper | undefined;
 async function montarComo(role: Rol) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().setRole(role);
+  sesionDePrueba(role);
   await router.push('/dashboard');
   wrapper = mount(MainLayout, {
     global: {
-      plugins: [pinia, router, PrimeVue],
+      plugins: [pinia, router, PrimeVue, ToastService],
       directives: { tooltip: {} },
       stubs: { Menu: true },
     },
@@ -31,20 +33,20 @@ describe('MainLayout', () => {
   // El router singleton ejecuta los guards con la pinia de la primera app instalada
   afterEach(() => wrapper?.unmount());
 
-  it('muestra todos los módulos al director', async () => {
-    expect(await montarComo('director')).toEqual(TODOS);
+  it('muestra todos los módulos al administrador', async () => {
+    expect(await montarComo('administrador')).toEqual(TODOS);
   });
 
   it('al técnico le oculta Marco Lógico y Desembolsos', async () => {
     expect(await montarComo('tecnico')).toEqual(['dashboard', 'cronograma', 'reportes']);
   });
 
-  it('al administrativo le oculta Marco Lógico y Cronograma', async () => {
-    expect(await montarComo('administrativo')).toEqual(['dashboard', 'desembolsos', 'reportes']);
+  it('al supervisor le oculta Marco Lógico y Cronograma', async () => {
+    expect(await montarComo('supervisor')).toEqual(['dashboard', 'desembolsos', 'reportes']);
   });
 
-  it('la Bitácora solo la ve el Director y se bloquea por URL para los demás', async () => {
-    expect(await montarComo('administrativo')).not.toContain('bitacora');
+  it('la Bitácora solo la ve el Administrador y se bloquea por URL para los demás', async () => {
+    expect(await montarComo('supervisor')).not.toContain('bitacora');
     await router.push('/bitacora');
     expect(router.currentRoute.value.name).toBe('dashboard');
   });

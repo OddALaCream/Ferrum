@@ -6,7 +6,8 @@ import SelectButton from 'primevue/selectbutton';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TecnicoProyecto } from '@/api/equipo';
 import type { EstadoProyecto, Proyecto } from '@/api/proyectos';
-import { useAuthStore, type Rol } from '@/stores/auth';
+import type { Rol } from '@/stores/auth';
+import { sesionDePrueba } from '@/test/helpers/sesion';
 import DetalleProyectoView from './DetalleProyectoView.vue';
 
 const ID = '33333333-3333-4333-8333-333333333333';
@@ -46,7 +47,6 @@ vi.mock('@/api/proyectos', async (importOriginal) => {
     registrarPresupuesto: vi.fn(),
     obtenerProyecto,
     actualizarEstado,
-    getFinanciadores: vi.fn().mockResolvedValue([{ id: 'f-1', nombre: 'Financiador Demo' }]),
   };
 });
 vi.mock('@/api/equipo', () => ({
@@ -64,7 +64,6 @@ const proyecto = (estado: EstadoProyecto): Proyecto => ({
   nombre: 'Proyecto de demostración',
   descripcion: null,
   objetivoGeneral: null,
-  financiadorId: 'f-1',
   presupuestoTotal: '100000.00',
   moneda: 'BOB',
   fechaInicio: '2026-01-01',
@@ -82,10 +81,10 @@ function error422() {
   });
 }
 
-async function montar(rol: Rol = 'director') {
+async function montar(rol: Rol = 'administrador') {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().setRole(rol);
+  sesionDePrueba(rol);
   const wrapper = mount(DetalleProyectoView, {
     props: { id: ID },
     global: {
@@ -106,7 +105,7 @@ describe('DetalleProyectoView', () => {
     obtenerEquipo.mockResolvedValue([tecnicoDemo]);
   });
 
-  it('muestra el estado actual en el Tag y permite al Director cambiarlo', async () => {
+  it('muestra el estado actual en el Tag y permite al Administrador cambiarlo', async () => {
     obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
     actualizarEstado.mockResolvedValue(proyecto('PAUSADO'));
     const wrapper = await montar();
@@ -193,7 +192,7 @@ describe('DetalleProyectoView', () => {
   });
 
   describe('Presupuesto (SGP-7)', () => {
-    it('el Director ve el presupuesto actual y el formulario para registrarlo', async () => {
+    it('el Administrador ve el presupuesto actual y el formulario para registrarlo', async () => {
       obtenerProyecto.mockResolvedValue(proyecto('EN_EJECUCION'));
       const wrapper = await montar();
 
@@ -202,7 +201,7 @@ describe('DetalleProyectoView', () => {
     });
 
     it.each<[string, EstadoProyecto, Rol]>([
-      ['proyecto cerrado', 'CERRADO', 'director'],
+      ['proyecto cerrado', 'CERRADO', 'administrador'],
       ['rol Técnico', 'EN_EJECUCION', 'tecnico'],
     ])('con %s el presupuesto es de solo lectura', async (_caso, estado, rol) => {
       obtenerProyecto.mockResolvedValue(proyecto(estado));

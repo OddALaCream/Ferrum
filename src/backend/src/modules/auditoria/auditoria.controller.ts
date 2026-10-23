@@ -1,11 +1,14 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import { AuditoriaService, OpcionesAuditoria, PaginaAuditoria } from './auditoria.service';
 import { ConsultarAuditoriaDto } from './dto/consultar-auditoria.dto';
 
 /**
  * RF-34 / SGP-59: consulta de la bitácora. Solo lectura: no existen rutas para modificarla.
- * La restricción al rol Director se aplicará con el guard del módulo auth (SGP-4).
+ * Solo la consulta el Administrador.
  */
+@Roles(RolUsuario.ADMINISTRADOR)
 @Controller('auditoria')
 export class AuditoriaController {
   constructor(private readonly auditoria: AuditoriaService) {}

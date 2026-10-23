@@ -7,15 +7,9 @@ export type EstadoProyecto = 'PLANIFICACION' | 'EN_EJECUCION' | 'PAUSADO' | 'CER
 export const MONEDAS = ['BOB', 'USD', 'EUR'] as const;
 export type Moneda = (typeof MONEDAS)[number];
 
-export interface Financiador {
-  id: string;
-  nombre: string;
-}
-
 export interface CreateProyectoDto {
   codigo: string;
   nombre: string;
-  financiadorId: string;
   /** Formato ISO `YYYY-MM-DD` (columna `date` en PostgreSQL). */
   fechaInicio: string;
   fechaFin: string;
@@ -63,11 +57,6 @@ export function motivoMontoInvalido(monto: string | null | undefined): string | 
     return 'El monto del presupuesto admite como máximo 12 dígitos enteros y 2 decimales.';
   }
   return null;
-}
-
-export async function getFinanciadores(): Promise<Financiador[]> {
-  const { data } = await http.get<Financiador[]>('/financiadores');
-  return data;
 }
 
 export async function crearProyecto(dto: CreateProyectoDto): Promise<Proyecto> {
