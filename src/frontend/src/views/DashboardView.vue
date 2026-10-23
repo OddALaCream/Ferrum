@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
 import { onMounted } from 'vue';
-import { PROYECTO_DEMO_ID } from '@/api/proyectos';
 import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
+
+/** Temporal: ID de PRY-DEMO-001 en database/02_seed_dev.sql (hasta existir listado). */
+const PROYECTO_DEMO_SEED_ID = '33333333-3333-4333-8333-333333333333';
 
 const app = useAppStore();
 const auth = useAuthStore();
@@ -26,7 +28,7 @@ onMounted(() => app.comprobarApi());
         <RouterLink
           v-if="auth.tieneAcceso(['director', 'tecnico'])"
           v-slot="{ navigate }"
-          :to="{ name: 'detalle-proyecto', params: { id: PROYECTO_DEMO_ID } }"
+          :to="{ name: 'detalle-proyecto', params: { id: PROYECTO_DEMO_SEED_ID } }"
           custom
         >
           <Button
