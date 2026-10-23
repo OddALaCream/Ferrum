@@ -15,7 +15,7 @@ async function main() {
   const ds = new DataSource(buildDataSourceOptions(process.env));
   await ds.initialize();
   try {
-    for (const archivo of ['02_seed_dev.sql', '03_usuarios_demo.sql']) {
+    for (const archivo of ['02_seed_dev.sql', '03_usuarios_demo.sql', '04_datos_demo.sql']) {
       const ruta = resolve(__dirname, '../../../../database', archivo);
       if (existsSync(ruta)) await ds.query(readFileSync(ruta, 'utf8'));
     }

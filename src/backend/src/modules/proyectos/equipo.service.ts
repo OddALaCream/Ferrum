@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, QueryFailedError, Repository } from 'typeorm';
-import { DIRECTOR_SEED_ID } from './constants';
 import { ProyectoEquipo } from './entities/proyecto-equipo.entity';
 import { Proyecto } from './entities/proyecto.entity';
 import { RolUsuario, Usuario } from './entities/usuario.entity';
@@ -77,7 +76,8 @@ export class EquipoService {
     return tecnicos.map((t) => ({ id: t.id, nombre: t.nombre, email: t.email }));
   }
 
-  async asignar(proyectoId: string, usuarioId: string): Promise<TecnicoProyectoDto> {
+  /** `asignadoPorId`: el Administrador de la sesión que hace la asignación. */
+  async asignar(proyectoId: string, usuarioId: string, asignadoPorId: string): Promise<TecnicoProyectoDto> {
     await this.asegurarProyecto(proyectoId);
 
     const tecnico = await this.usuarios.findOne({
@@ -97,7 +97,7 @@ export class EquipoService {
     const asignacion = this.equipo.create({
       proyectoId,
       usuarioId,
-      asignadoPorId: DIRECTOR_SEED_ID,
+      asignadoPorId,
     });
 
     try {

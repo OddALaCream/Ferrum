@@ -2,12 +2,12 @@ import { ConflictException, NotFoundException, UnprocessableEntityException } fr
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError } from 'typeorm';
-import { DIRECTOR_SEED_ID } from './constants';
 import { Proyecto, type EstadoProyecto } from './entities/proyecto.entity';
 import { normalizarMonto } from './presupuesto';
 import { ProyectosService } from './proyectos.service';
 
 const ID = '33333333-3333-4333-8333-333333333333';
+const ADMIN_ID = '22222222-2222-4222-8222-222222222221';
 
 function proyecto(estado: EstadoProyecto = 'EN_EJECUCION'): Proyecto {
   return Object.assign(new Proyecto(), {
@@ -114,13 +114,13 @@ describe('ProyectosService (crear / estado)', () => {
     fechaFin: '2026-12-31',
   };
 
-  it('crea el proyecto en PLANIFICACION con creado_por del Director seed', async () => {
+  it('crea el proyecto en PLANIFICACION con creado_por del usuario de la sesión', async () => {
     proyectos.save.mockImplementation(async (p) => ({ id: 'nuevo-id', ...p }));
 
-    const resultado = await service.crear(dto);
+    const resultado = await service.crear(dto, ADMIN_ID);
 
     expect(resultado.estado).toBe('PLANIFICACION');
-    expect(resultado.creadoPorId).toBe(DIRECTOR_SEED_ID);
+    expect(resultado.creadoPorId).toBe(ADMIN_ID);
     expect(resultado.presupuestoTotal).toBe('0.00');
     expect(proyectos.save).toHaveBeenCalled();
   });
@@ -132,8 +132,8 @@ describe('ProyectosService (crear / estado)', () => {
     });
     proyectos.save.mockRejectedValue(new QueryFailedError('', [], driverError));
 
-    await expect(service.crear(dto)).rejects.toBeInstanceOf(ConflictException);
-    await expect(service.crear(dto)).rejects.toThrow(/Ya existe un proyecto con el código/);
+    await expect(service.crear(dto, ADMIN_ID)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.crear(dto, ADMIN_ID)).rejects.toThrow(/Ya existe un proyecto con el código/);
   });
 
   it('lanza NotFoundException si el proyecto no existe', async () => {

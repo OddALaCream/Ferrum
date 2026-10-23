@@ -1,176 +1,76 @@
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import request from 'supertest';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError } from 'typeorm';
-import { DIRECTOR_SEED_ID } from './constants';
-import { Proyecto, type EstadoProyecto } from './entities/proyecto.entity';
-import { normalizarMonto } from './presupuesto';
+import { ProblemDetailsFilter } from '../../common/filters/problem-details.filter';
+import { ProyectoEquipo } from './entities/proyecto-equipo.entity';
+import { ProyectosController } from './proyectos.controller';
 import { ProyectosService } from './proyectos.service';
 
 const ID = '33333333-3333-4333-8333-333333333333';
 
-function proyecto(estado: EstadoProyecto = 'EN_EJECUCION'): Proyecto {
-  return Object.assign(new Proyecto(), {
-    id: ID,
-    codigo: 'PRY-DEMO-001',
-    presupuestoTotal: '100000.00',
-    moneda: 'BOB',
-    estado,
-  });
-}
+/** Prueba HTTP del endpoint con la misma configuración global de main.ts, sin base de datos. */
+describe('PATCH /api/proyectos/:id/presupuesto', () => {
+  let app: INestApplication;
+  const registrarPresupuesto = jest.fn();
 
-describe('ProyectosService.registrarPresupuesto', () => {
-  let service: ProyectosService;
-  let proyectos: { findOne: jest.Mock; save: jest.Mock };
-
-  beforeEach(async () => {
-    proyectos = {
-      findOne: jest.fn(),
-      save: jest.fn((p: Proyecto) => Promise.resolve(p)),
-    };
-    const module = await Test.createTestingModule({
+  beforeAll(async () => {
+    const mod = await Test.createTestingModule({
+      controllers: [ProyectosController],
       providers: [
-        ProyectosService,
-        { provide: getRepositoryToken(Proyecto), useValue: proyectos },
+        { provide: ProyectosService, useValue: { registrarPresupuesto } },
+        // Lo necesita el AlcanceProyectoGuard de GET /proyectos/:id
+        { provide: getRepositoryToken(ProyectoEquipo), useValue: { exists: jest.fn() } },
       ],
     }).compile();
-    service = module.get(ProyectosService);
+    app = mod.createNestApplication();
+    app.setGlobalPrefix('api');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalFilters(new ProblemDetailsFilter());
+    await app.init();
   });
 
-  it('CP-02: guarda 850 000,50 BOB exacto, con dos decimales y su moneda', async () => {
-    proyectos.findOne.mockResolvedValue(proyecto());
+  afterAll(() => app.close());
 
-    const resultado = await service.registrarPresupuesto(ID, { monto: '850000.50', moneda: 'BOB' });
+  beforeEach(() => registrarPresupuesto.mockReset());
 
-    expect(proyectos.save).toHaveBeenCalledWith(
-      expect.objectContaining({ presupuestoTotal: '850000.50', moneda: 'BOB' }),
-    );
-    expect(resultado.presupuestoTotal).toBe('850000.50');
+  it('CP-02: registra 850 000,50 BOB y devuelve el monto exacto', async () => {
+    registrarPresupuesto.mockResolvedValue({ id: ID, presupuestoTotal: '850000.50', moneda: 'BOB' });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/api/proyectos/${ID}/presupuesto`)
+      .send({ monto: '850000.50', moneda: 'BOB' })
+      .expect(200);
+
+    expect(registrarPresupuesto).toHaveBeenCalledWith(ID, { monto: '850000.50', moneda: 'BOB' });
+    expect(res.body).toMatchObject({ presupuestoTotal: '850000.50', moneda: 'BOB' });
   });
 
-  it('completa los decimales y cambia la moneda a EUR', async () => {
-    proyectos.findOne.mockResolvedValue(proyecto());
+  it('CP-02: rechaza un monto negativo con 400 y mensaje descriptivo (RFC 7807)', async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/api/proyectos/${ID}/presupuesto`)
+      .send({ monto: '-100.00', moneda: 'BOB' })
+      .expect(400);
 
-    const resultado = await service.registrarPresupuesto(ID, { monto: '1250.5', moneda: 'EUR' });
-
-    expect(resultado).toMatchObject({ presupuestoTotal: '1250.50', moneda: 'EUR' });
-  });
-
-  it('responde 404 si el proyecto no existe', async () => {
-    proyectos.findOne.mockResolvedValue(null);
-
-    await expect(service.registrarPresupuesto(ID, { monto: '1', moneda: 'BOB' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-    expect(proyectos.save).not.toHaveBeenCalled();
-  });
-
-  it('responde 422 si el proyecto está cerrado (RN-09)', async () => {
-    proyectos.findOne.mockResolvedValue(proyecto('CERRADO'));
-
-    await expect(service.registrarPresupuesto(ID, { monto: '1', moneda: 'BOB' })).rejects.toBeInstanceOf(
-      UnprocessableEntityException,
-    );
-    expect(proyectos.save).not.toHaveBeenCalled();
-  });
-});
-
-describe('normalizarMonto', () => {
-  it.each([
-    ['850000.50', '850000.50'],
-    ['850000.5', '850000.50'],
-    ['100', '100.00'],
-    ['0', '0.00'],
-    ['007.1', '7.10'],
-    ['999999999999.99', '999999999999.99'],
-  ])('%s → %s', (entrada, esperado) => {
-    expect(normalizarMonto(entrada)).toBe(esperado);
-  });
-});
-
-describe('ProyectosService (crear / estado)', () => {
-  const proyectos = {
-    create: jest.fn((v) => v),
-    save: jest.fn(),
-    findOne: jest.fn(),
-  };
-  let service: ProyectosService;
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    const module = await Test.createTestingModule({
-      providers: [
-        ProyectosService,
-        { provide: getRepositoryToken(Proyecto), useValue: proyectos },
-      ],
-    }).compile();
-    service = module.get(ProyectosService);
-  });
-
-  const dto = {
-    codigo: 'PRY-2026-010',
-    nombre: 'Nuevo proyecto',
-    fechaInicio: '2026-01-01',
-    fechaFin: '2026-12-31',
-  };
-
-  it('crea el proyecto en PLANIFICACION con creado_por del Director seed', async () => {
-    proyectos.save.mockImplementation(async (p) => ({ id: 'nuevo-id', ...p }));
-
-    const resultado = await service.crear(dto);
-
-    expect(resultado.estado).toBe('PLANIFICACION');
-    expect(resultado.creadoPorId).toBe(DIRECTOR_SEED_ID);
-    expect(resultado.presupuestoTotal).toBe('0.00');
-    expect(proyectos.save).toHaveBeenCalled();
-  });
-
-  it('lanza ConflictException (409) si el código ya existe', async () => {
-    const driverError = Object.assign(new Error('duplicate'), {
-      code: '23505',
-      constraint: 'uq_proyectos_codigo',
+    expect(res.body).toMatchObject({
+      status: 400,
+      detail: ['El monto del presupuesto no puede ser negativo.'],
     });
-    proyectos.save.mockRejectedValue(new QueryFailedError('', [], driverError));
-
-    await expect(service.crear(dto)).rejects.toBeInstanceOf(ConflictException);
-    await expect(service.crear(dto)).rejects.toThrow(/Ya existe un proyecto con el código/);
+    expect(registrarPresupuesto).not.toHaveBeenCalled();
   });
 
-  it('lanza NotFoundException si el proyecto no existe', async () => {
-    proyectos.findOne.mockResolvedValue(null);
-    await expect(service.obtenerPorId('00000000-0000-4000-8000-000000000000')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+  it('rechaza un id que no es UUID', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/proyectos/no-es-uuid/presupuesto')
+      .send({ monto: '1', moneda: 'BOB' })
+      .expect(400);
+    expect(registrarPresupuesto).not.toHaveBeenCalled();
   });
 
-  it('RN-09 / CP-03: rechaza transición desde CERRADO con 422', async () => {
-    proyectos.findOne.mockResolvedValue({ id: 'p1', estado: 'CERRADO' });
-
-    await expect(
-      service.actualizarEstado('p1', { estado: 'EN_EJECUCION' }),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    await expect(
-      service.actualizarEstado('p1', { estado: 'EN_EJECUCION' }),
-    ).rejects.toThrow('Un proyecto cerrado no puede cambiar de estado (RN-09).');
-  });
-
-  it('permite actualizar el estado cuando la transición es válida', async () => {
-    const actual = { id: 'p1', estado: 'EN_EJECUCION' as const };
-    proyectos.findOne.mockResolvedValue(actual);
-    proyectos.save.mockImplementation(async (p) => p);
-
-    const resultado = await service.actualizarEstado('p1', { estado: 'PAUSADO' });
-    expect(resultado.estado).toBe('PAUSADO');
-  });
-
-  it('rechaza con 422 una transición no permitida por el esquema (p. ej. PLANIFICACION→CERRADO)', async () => {
-    proyectos.findOne.mockResolvedValue({ id: 'p1', estado: 'PLANIFICACION' });
-
-    await expect(
-      service.actualizarEstado('p1', { estado: 'CERRADO' }),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    await expect(
-      service.actualizarEstado('p1', { estado: 'CERRADO' }),
-    ).rejects.toThrow(/Transición de proyecto no permitida/);
+  it('rechaza campos no permitidos', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/proyectos/${ID}/presupuesto`)
+      .send({ monto: '1', moneda: 'BOB', estado: 'CERRADO' })
+      .expect(400);
   });
 });

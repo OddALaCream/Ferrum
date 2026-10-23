@@ -1,7 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DIRECTOR_SEED_ID } from './constants';
 import { ProyectoEquipo } from './entities/proyecto-equipo.entity';
 import { Proyecto } from './entities/proyecto.entity';
 import { RolUsuario, Usuario } from './entities/usuario.entity';
@@ -10,6 +9,7 @@ import { EquipoService } from './equipo.service';
 describe('EquipoService', () => {
   const PROYECTO = '33333333-3333-4333-8333-333333333333';
   const TECNICO = '22222222-2222-4222-8222-222222222222';
+  const ADMIN_ID = '22222222-2222-4222-8222-222222222221';
 
   const equipo = {
     find: jest.fn(),
@@ -75,12 +75,12 @@ describe('EquipoService', () => {
     });
     equipo.save.mockImplementation(async (a) => ({ ...a, id: 'asig-nueva' }));
 
-    const resultado = await service.asignar(PROYECTO, TECNICO);
+    const resultado = await service.asignar(PROYECTO, TECNICO, ADMIN_ID);
 
     expect(equipo.create).toHaveBeenCalledWith({
       proyectoId: PROYECTO,
       usuarioId: TECNICO,
-      asignadoPorId: DIRECTOR_SEED_ID,
+      asignadoPorId: ADMIN_ID,
     });
     expect(resultado.id).toBe(TECNICO);
     expect(resultado.fechaAsignacion).toBe('2026-03-01T12:00:00.000Z');
@@ -90,7 +90,7 @@ describe('EquipoService', () => {
     equipo.findOne.mockResolvedValue({ id: 'asig-1' });
     usuarios.findOne.mockResolvedValue({ id: TECNICO, rol: RolUsuario.TECNICO });
 
-    await expect(service.asignar(PROYECTO, TECNICO)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.asignar(PROYECTO, TECNICO, ADMIN_ID)).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('retira con baja lógica (retirado_at)', async () => {

@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, QueryFailedError, Repository } from 'typeorm';
-import { DIRECTOR_SEED_ID } from './constants';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { RegistrarPresupuestoDto } from './dto/registrar-presupuesto.dto';
 import { UpdateEstadoProyectoDto } from './dto/update-estado-proyecto.dto';
@@ -37,7 +36,8 @@ export class ProyectosService {
     private readonly proyectos: Repository<Proyecto>,
   ) {}
 
-  async crear(dto: CreateProyectoDto): Promise<Proyecto> {
+  /** `creadoPorId`: el usuario de la sesión que registra el proyecto. */
+  async crear(dto: CreateProyectoDto, creadoPorId: string): Promise<Proyecto> {
     const proyecto = this.proyectos.create({
       codigo: dto.codigo.trim(),
       nombre: dto.nombre.trim(),
@@ -46,7 +46,7 @@ export class ProyectosService {
       estado: 'PLANIFICACION',
       presupuestoTotal: '0.00',
       moneda: 'BOB',
-      creadoPorId: DIRECTOR_SEED_ID,
+      creadoPorId,
     });
 
     try {
