@@ -1,4 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import { AuditoriaService, OpcionesAuditoria, PaginaAuditoria } from './auditoria.service';
@@ -9,6 +10,7 @@ import { ConsultarAuditoriaDto } from './dto/consultar-auditoria.dto';
  * Solo la consulta el Administrador.
  */
 @Roles(RolUsuario.ADMINISTRADOR)
+@ApiTags('Bitácora')
 @Controller('auditoria')
 export class AuditoriaController {
   constructor(private readonly auditoria: AuditoriaService) {}

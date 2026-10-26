@@ -1,3 +1,4 @@
+import { ApiHideProperty } from '@nestjs/swagger';
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Proyecto } from './proyecto.entity';
 import { ProyectoEquipo } from './proyecto-equipo.entity';
@@ -22,6 +23,7 @@ export class Usuario {
   @Column({ type: 'citext' })
   email!: string;
 
+  @ApiHideProperty()
   @Column({ name: 'password_hash', type: 'varchar', length: 100 })
   passwordHash!: string;
 
@@ -34,9 +36,11 @@ export class Usuario {
   @Column({ type: 'boolean', default: true })
   activo!: boolean;
 
+  @ApiHideProperty()
   @Column({ name: 'intentos_fallidos', type: 'smallint', default: 0 })
   intentosFallidos!: number;
 
+  @ApiHideProperty()
   @Column({ name: 'bloqueado_hasta', type: 'timestamptz', nullable: true })
   bloqueadoHasta!: Date | null;
 

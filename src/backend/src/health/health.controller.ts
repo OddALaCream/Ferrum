@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService, HealthIndicatorResult, TypeOrmHealthIndicator } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
@@ -7,6 +8,7 @@ import { StorageAdapter } from '../infrastructure/storage/storage.adapter';
 
 @Public()
 @SkipThrottle()
+@ApiTags('Salud')
 @Controller('health')
 export class HealthController {
   constructor(

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UsuarioActual } from '../../common/decorators/usuario-actual.decorator';
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
@@ -10,6 +11,7 @@ import { RolUsuario } from './entities/usuario.entity';
 import { AlcanceProyecto } from './guards/alcance-proyecto.guard';
 import { ProyectosService } from './proyectos.service';
 
+@ApiTags('Proyectos')
 @Controller('proyectos')
 export class ProyectosController {
   constructor(private readonly proyectosService: ProyectosService) {}

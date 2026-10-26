@@ -10,6 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UsuarioActual } from '../../common/decorators/usuario-actual.decorator';
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
@@ -18,6 +19,7 @@ import { RolUsuario } from './entities/usuario.entity';
 import { EquipoService } from './equipo.service';
 import { AlcanceProyecto } from './guards/alcance-proyecto.guard';
 
+@ApiTags('Equipo del proyecto')
 @Controller('proyectos/:proyectoId/equipo')
 export class EquipoController {
   constructor(private readonly equipoService: EquipoService) {}

@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { UsuarioActual } from '../../../common/decorators/usuario-actual.decorator';
 import type { UsuarioAutenticado } from '../../auth/types/auth.types';
@@ -11,6 +12,7 @@ import { UsuariosService } from '../services/usuarios.service';
 
 /** SGP-53: gestión de cuentas. Todo el controlador es solo para el Administrador. */
 @Roles(RolUsuario.ADMINISTRADOR)
+@ApiTags('Usuarios')
 @Controller('usuarios')
 export class UsuariosController {
   constructor(private readonly usuarios: UsuariosService) {}

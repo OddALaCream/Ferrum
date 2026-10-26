@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
@@ -12,6 +13,7 @@ import { RestablecerPasswordDto } from '../dto/restablecer-password.dto';
 import { SolicitarRestablecimientoDto } from '../dto/solicitar-restablecimiento.dto';
 import { PasswordResetService } from '../services/password-reset.service';
 
+@ApiTags('Autenticación')
 @Controller('auth')
 export class AuthController {
   private readonly cookieSegura: boolean;
