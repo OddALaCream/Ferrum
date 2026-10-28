@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
 
 const { obtenerResumen } = vi.hoisted(() => ({ obtenerResumen: vi.fn() }));
-vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
 vi.mock('@/api/proyectos', () => ({ obtenerResumen }));
 
 const RESUMEN = {
@@ -24,11 +23,12 @@ describe('DashboardView', () => {
     obtenerResumen.mockReset();
   });
 
-  it('muestra la API como conectada cuando /health responde ok', async () => {
+  it('no muestra ningún indicador técnico del estado de la API', async () => {
     obtenerResumen.mockResolvedValue(RESUMEN);
     const wrapper = montar();
     await esperar();
-    expect(wrapper.get('[data-test="api-status"]').text()).toBe('conectada');
+    expect(wrapper.find('[data-test="api-status"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/API|conectada/);
   });
 
   it('muestra los indicadores de la cartera', async () => {

@@ -105,6 +105,35 @@ describe('Listado de proyectos e indicadores (e2e, RF-04)', () => {
     expect((await listar('tecnico', { q: codigo }).expect(200)).body.total).toBe(0);
   });
 
+  it('el avance sale del marco lógico: sin actividades es 0 % aunque el proyecto tenga un número guardado', async () => {
+    // Un valor suelto en la columna (como el que traían los datos de ejemplo) no debe mostrarse
+    await ds.query(`UPDATE proyectos SET cumplimiento_pct = 58 WHERE id = $1`, [proyectoId]);
+    const res = await listar('admin', { q: codigo }).expect(200);
+    expect(Number(res.body.items[0].cumplimientoPct)).toBe(0);
+  });
+
+  it('con actividades, el avance es el promedio de su avance', async () => {
+    const server = app.getHttpServer();
+    const resultado = await request(server)
+      .post(`/api/proyectos/${proyectoId}/resultados`)
+      .set(bearer('admin'))
+      .send({ codigo: 'R.1', descripcion: 'Resultado para el avance' })
+      .expect(201);
+    const nueva = (cod: string) =>
+      request(server)
+        .post(`/api/proyectos/${proyectoId}/resultados/${resultado.body.id}/actividades`)
+        .set(bearer('admin'))
+        .send({ codigo: cod, nombre: cod, tipoCronograma: 'CONTINUO', fechaInicio: '2026-11-02', fechaFin: '2027-01-29' })
+        .expect(201);
+    const a1 = await nueva('A.1.1');
+    await nueva('A.1.2');
+    // Una completada (100 %) y otra pendiente (0 %) → 50 %
+    await request(server).patch(`/api/proyectos/${proyectoId}/actividades/${a1.body.id}/estado`).set(bearer('admin')).send({ estado: 'COMPLETADA' }).expect(200);
+
+    const res = await listar('admin', { q: codigo }).expect(200);
+    expect(Number(res.body.items[0].cumplimientoPct)).toBe(50);
+  });
+
   it('sin sesión el listado responde 401', async () => {
     await request(app.getHttpServer()).get('/api/proyectos').expect(401);
   });

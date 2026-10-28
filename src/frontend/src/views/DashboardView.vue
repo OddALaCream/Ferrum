@@ -2,12 +2,10 @@
 import Button from 'primevue/button';
 import { computed, onMounted, ref } from 'vue';
 import { obtenerResumen, type EstadoProyecto, type ResumenCartera } from '@/api/proyectos';
-import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 import { formatoMonto } from '@/utils/formato';
 import { ESTADOS_PROYECTO } from './Proyectos/estadoProyecto';
 
-const app = useAppStore();
 const auth = useAuthStore();
 
 const resumen = ref<ResumenCartera | null>(null);
@@ -31,7 +29,6 @@ const estados = computed(() =>
 const total = computed(() => resumen.value?.totalProyectos ?? 0);
 
 onMounted(async () => {
-  app.comprobarApi();
   try {
     resumen.value = await obtenerResumen();
   } catch {
@@ -84,16 +81,6 @@ onMounted(async () => {
           </RouterLink>
         </div>
       </div>
-      <p class="mt-4 flex items-center gap-2 text-sm text-slate-500">
-        <span
-          class="h-2 w-2 rounded-full"
-          :class="app.apiStatus === 'conectada' ? 'bg-green-500' : 'bg-slate-300'"
-        />
-        API: <strong
-          class="font-medium text-slate-700"
-          data-test="api-status"
-        >{{ app.apiStatus }}</strong>
-      </p>
     </section>
 
     <p

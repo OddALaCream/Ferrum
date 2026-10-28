@@ -81,11 +81,19 @@ export class ProyectosService {
         '(SELECT COUNT(*) FROM proyecto_equipo pe WHERE pe.proyecto_id = p.id AND pe.retirado_at IS NULL)',
         'equipo_activo',
       )
+      // El avance sale del marco lógico, no de un número guardado: promedio del avance de las actividades del proyecto.
+      // Un proyecto sin actividades está en 0 %. (El cálculo por indicadores aprobados llega con el Sprint 3.)
+      .addSelect(
+        `(SELECT COALESCE(ROUND(AVG(a.cumplimiento_pct), 2), 0)
+            FROM actividades a JOIN resultados r ON r.id = a.resultado_id
+           WHERE r.proyecto_id = p.id)`,
+        'avance',
+      )
       .orderBy('p.fecha_inicio', 'DESC')
       .addOrderBy('p.codigo', 'ASC')
       .offset((page - 1) * limit)
       .limit(limit)
-      .getRawAndEntities<{ equipo_activo: string }>();
+      .getRawAndEntities<{ equipo_activo: string; avance: string }>();
 
     const items: ProyectoResumen[] = entities.map((p, i) => ({
       id: p.id,
@@ -96,7 +104,7 @@ export class ProyectosService {
       moneda: p.moneda,
       fechaInicio: p.fechaInicio,
       fechaFin: p.fechaFin,
-      cumplimientoPct: p.cumplimientoPct,
+      cumplimientoPct: String(raw[i]?.avance ?? '0'),
       equipoActivo: Number(raw[i]?.equipo_activo ?? 0),
     }));
     return { items, total, page, limit };

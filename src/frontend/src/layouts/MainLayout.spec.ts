@@ -2,13 +2,11 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import PrimeVue from 'primevue/config';
 import ToastService from 'primevue/toastservice';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { router } from '@/router';
 import type { Rol } from '@/stores/auth';
 import { sesionDePrueba } from '@/test/helpers/sesion';
 import MainLayout from './MainLayout.vue';
-
-vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
 
 const TODOS = ['dashboard', 'proyectos', 'cronograma', 'desembolsos', 'reportes', 'usuarios', 'bitacora'];
 
