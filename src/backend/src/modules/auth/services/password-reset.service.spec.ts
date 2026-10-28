@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -71,9 +71,11 @@ describe('PasswordResetService (SGP-110)', () => {
       expect(tokens.update).toHaveBeenCalledWith({ usuarioId: 'u-1', usadoAt: expect.anything() }, { usadoAt: expect.any(Date) });
     });
 
-    it('si el correo no existe no envía nada ni lanza error (no revela qué correos hay)', async () => {
+    it('si el correo no existe responde 404 con un mensaje claro y no envía nada', async () => {
       usuarios.findOne.mockResolvedValue(null);
-      await expect(service.solicitar('nadie@serfamilia.test')).resolves.toBeUndefined();
+      const error = await service.solicitar('nadie@serfamilia.test').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect((error as NotFoundException).message).toContain('No encontramos una cuenta activa');
       expect(mail.send).not.toHaveBeenCalled();
       expect(tokens.insert).not.toHaveBeenCalled();
     });

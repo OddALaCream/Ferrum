@@ -10,7 +10,7 @@ import MainLayout from './MainLayout.vue';
 
 vi.mock('@/api/health', () => ({ getHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
 
-const TODOS = ['dashboard', 'marco-logico', 'cronograma', 'desembolsos', 'reportes', 'usuarios', 'bitacora'];
+const TODOS = ['dashboard', 'proyectos', 'cronograma', 'desembolsos', 'reportes', 'usuarios', 'bitacora'];
 
 let wrapper: VueWrapper | undefined;
 
@@ -37,12 +37,12 @@ describe('MainLayout', () => {
     expect(await montarComo('administrador')).toEqual(TODOS);
   });
 
-  it('al técnico le oculta Marco Lógico y Desembolsos', async () => {
-    expect(await montarComo('tecnico')).toEqual(['dashboard', 'cronograma', 'reportes']);
+  it('al técnico le oculta Desembolsos, Usuarios y Bitácora', async () => {
+    expect(await montarComo('tecnico')).toEqual(['dashboard', 'proyectos', 'cronograma', 'reportes']);
   });
 
-  it('al supervisor le oculta Marco Lógico y Cronograma', async () => {
-    expect(await montarComo('supervisor')).toEqual(['dashboard', 'desembolsos', 'reportes']);
+  it('al supervisor le oculta Cronograma, Usuarios y Bitácora', async () => {
+    expect(await montarComo('supervisor')).toEqual(['dashboard', 'proyectos', 'desembolsos', 'reportes']);
   });
 
   it('la Bitácora solo la ve el Administrador y se bloquea por URL para los demás', async () => {

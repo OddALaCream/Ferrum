@@ -59,7 +59,7 @@ export class AuthController {
     res.clearCookie(COOKIE_REFRESH, this.opcionesCookie());
   }
 
-  /** SGP-110: pide el enlace de restablecimiento. Responde 202 siempre igual, exista o no el correo. */
+  /** SGP-110: pide el enlace de restablecimiento. 202 si se envió; 404 si no hay una cuenta activa con ese correo. */
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('olvide-mi-contrasena')

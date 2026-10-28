@@ -12,6 +12,7 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProyectosModule } from './modules/proyectos/proyectos.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
+import { MarcoLogicoModule } from './modules/marco-logico/marco-logico.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
     AuthModule,
     UsuariosModule,
     ProyectosModule,
+    MarcoLogicoModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

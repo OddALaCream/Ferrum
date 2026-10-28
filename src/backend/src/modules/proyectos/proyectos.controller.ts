@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UsuarioActual } from '../../common/decorators/usuario-actual.decorator';
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
+import { ListarProyectosDto } from './dto/listar-proyectos.dto';
 import { RegistrarPresupuestoDto } from './dto/registrar-presupuesto.dto';
 import { UpdateEstadoProyectoDto } from './dto/update-estado-proyecto.dto';
 import { Proyecto } from './entities/proyecto.entity';
@@ -20,6 +21,20 @@ export class ProyectosController {
   @Post()
   crear(@Body() dto: CreateProyectoDto, @UsuarioActual() usuario: UsuarioAutenticado) {
     return this.proyectosService.crear(dto, usuario.id);
+  }
+
+  /** Listado paginado. El Técnico solo ve los proyectos donde está asignado. */
+  @Roles(RolUsuario.ADMINISTRADOR, RolUsuario.SUPERVISOR, RolUsuario.TECNICO)
+  @Get()
+  listar(@Query() filtros: ListarProyectosDto, @UsuarioActual() usuario: UsuarioAutenticado) {
+    return this.proyectosService.listar(filtros, usuario);
+  }
+
+  /** Indicadores del panel. Va antes de `:id` para que "resumen" no se tome como un identificador. */
+  @Roles(RolUsuario.ADMINISTRADOR, RolUsuario.SUPERVISOR, RolUsuario.TECNICO)
+  @Get('resumen')
+  resumen(@UsuarioActual() usuario: UsuarioAutenticado) {
+    return this.proyectosService.resumen(usuario);
   }
 
   /** El Técnico solo ve los proyectos donde está asignado (SGP-50). */

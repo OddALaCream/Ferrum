@@ -36,11 +36,13 @@ async function solicitar() {
   } catch (e) {
     const status = isAxiosError<ProblemDetails>(e) ? e.response?.status : undefined;
     errorServidor.value =
-      status === 429
-        ? 'Hiciste demasiadas solicitudes. Espera un minuto antes de volver a intentar.'
-        : !status
-          ? 'No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.'
-          : 'No se pudo procesar la solicitud. Inténtalo de nuevo en unos minutos.';
+      status === 404
+        ? 'No encontramos una cuenta activa con ese correo. Revisa que esté bien escrito.'
+        : status === 429
+          ? 'Hiciste demasiadas solicitudes. Espera un minuto antes de volver a intentar.'
+          : !status
+            ? 'No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.'
+            : 'No se pudo procesar la solicitud. Inténtalo de nuevo en unos minutos.';
   } finally {
     enviando.value = false;
   }
@@ -56,7 +58,7 @@ async function solicitar() {
     >
       <h2>Revisa tu correo</h2>
       <p class="auth__ayuda">
-        Si <strong>{{ email.trim() }}</strong> está registrado, te enviamos un enlace para elegir una nueva contraseña.
+        Enviamos un enlace a <strong>{{ email.trim() }}</strong> para elegir una nueva contraseña.
         Sirve una sola vez y vence en 30 minutos.
       </p>
       <p class="auth__ayuda">

@@ -4,6 +4,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { ProblemDetailsFilter } from '../src/common/filters/problem-details.filter';
+import { borrarProyectosDePrueba } from './helpers/limpieza';
 
 /** Requiere la BD de desarrollo con migraciones y seed aplicados (igual que health.e2e-spec). */
 describe('Bitácora de auditoría (e2e, RF-34)', () => {
@@ -49,7 +50,10 @@ describe('Bitácora de auditoría (e2e, RF-34)', () => {
       .expect(200);
   });
 
-  afterAll(() => app.close());
+  afterAll(async () => {
+    await borrarProyectosDePrueba(ds, 'PRY-E2E-');
+    await app.close();
+  });
 
   it('CP-34: cada escritura queda con acción, entidad, fecha, IP y valores anterior/nuevo', async () => {
     const res = await request(app.getHttpServer())

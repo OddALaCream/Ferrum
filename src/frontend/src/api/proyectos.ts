@@ -79,3 +79,52 @@ export async function registrarPresupuesto(id: string, dto: RegistrarPresupuesto
   const { data } = await http.patch<Proyecto>(`/proyectos/${id}/presupuesto`, dto);
   return data;
 }
+
+/** Una fila del listado de proyectos (GET /proyectos). */
+export interface ProyectoResumen {
+  id: string;
+  codigo: string;
+  nombre: string;
+  estado: EstadoProyecto;
+  presupuestoTotal: string;
+  moneda: Moneda;
+  fechaInicio: string;
+  fechaFin: string;
+  /** % de cumplimiento del proyecto, 0 a 100 (llega como texto de PostgreSQL). */
+  cumplimientoPct: string | number;
+  /** Técnicos con asignación vigente. */
+  equipoActivo: number;
+}
+
+export interface ListaProyectos {
+  items: ProyectoResumen[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface FiltrosProyectos {
+  q?: string;
+  estado?: EstadoProyecto;
+  page?: number;
+  limit?: number;
+}
+
+/** Indicadores de la cartera visible para el usuario (GET /proyectos/resumen). */
+export interface ResumenCartera {
+  totalProyectos: number;
+  porEstado: Record<EstadoProyecto, number>;
+  presupuestoBob: string;
+  tecnicosActivos: number;
+}
+
+/** RF-04: el Técnico solo recibe los proyectos donde está asignado. */
+export async function listarProyectos(filtros: FiltrosProyectos = {}): Promise<ListaProyectos> {
+  const { data } = await http.get<ListaProyectos>('/proyectos', { params: filtros });
+  return data;
+}
+
+export async function obtenerResumen(): Promise<ResumenCartera> {
+  const { data } = await http.get<ResumenCartera>('/proyectos/resumen');
+  return data;
+}

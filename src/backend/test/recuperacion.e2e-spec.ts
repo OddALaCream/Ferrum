@@ -60,11 +60,11 @@ describeSiHayCorreo('Recuperación de contraseña (e2e, RF-33)', () => {
       .set('X-Forwarded-For', `10.9.0.${ipSimulada++}`)
       .send({ email });
 
-  it('responde igual exista o no el correo y solo envía correo a una cuenta real', async () => {
+  it('un correo que no existe responde 404 con mensaje claro; solo se envía correo a una cuenta real', async () => {
     const previos = cantidadCorreos();
-    const real = await pedirEnlace(EMAIL).expect(202);
-    const falso = await pedirEnlace('nadie@serfamilia.test').expect(202);
-    expect(falso.body).toEqual(real.body);
+    await pedirEnlace(EMAIL).expect(202);
+    const falso = await pedirEnlace('nadie@serfamilia.test').expect(404);
+    expect(falso.body.detail).toContain('No encontramos una cuenta activa');
 
     const correo = await esperarCorreo(previos);
     expect(correo.to).toContain(EMAIL);
@@ -125,7 +125,7 @@ describeSiHayCorreo('Recuperación de contraseña (e2e, RF-33)', () => {
     const server = app.getHttpServer();
     const ip = '10.8.0.1';
     for (let i = 0; i < 5; i++) {
-      await request(server).post('/api/auth/olvide-mi-contrasena').set('X-Forwarded-For', ip).send({ email: 'nadie@serfamilia.test' }).expect(202);
+      await request(server).post('/api/auth/olvide-mi-contrasena').set('X-Forwarded-For', ip).send({ email: 'nadie@serfamilia.test' }).expect(404);
     }
     await request(server).post('/api/auth/olvide-mi-contrasena').set('X-Forwarded-For', ip).send({ email: 'nadie@serfamilia.test' }).expect(429);
   });

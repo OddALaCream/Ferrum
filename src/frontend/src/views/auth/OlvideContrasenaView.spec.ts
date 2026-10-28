@@ -42,7 +42,7 @@ describe('OlvideContrasenaView (SGP-110)', () => {
     expect(wrapper.get('[data-test="error-email"]').text()).toContain('nombre@dominio.org');
   });
 
-  it('pide el enlace y muestra la confirmación sin revelar si el correo existe', async () => {
+  it('pide el enlace y muestra a qué correo se envió', async () => {
     solicitarRestablecimiento.mockResolvedValue(undefined);
     const wrapper = montar();
     await enviar(wrapper, ' tecnico@serfamilia.test ');
@@ -50,7 +50,18 @@ describe('OlvideContrasenaView (SGP-110)', () => {
     expect(solicitarRestablecimiento).toHaveBeenCalledWith('tecnico@serfamilia.test');
     const texto = wrapper.get('[data-test="confirmacion"]').text();
     expect(texto).toContain('Revisa tu correo');
-    expect(texto).toContain('Si tecnico@serfamilia.test está registrado');
+    expect(texto).toContain('Enviamos un enlace a tecnico@serfamilia.test');
+  });
+
+  it('si el correo no existe (404) avisa que no hay una cuenta con ese correo y no muestra la confirmación', async () => {
+    solicitarRestablecimiento.mockRejectedValue(errorHttp(404));
+    const wrapper = montar();
+    await enviar(wrapper, 'nadie@serfamilia.test');
+
+    expect(wrapper.get('[data-test="error-servidor"]').text()).toContain('No encontramos una cuenta activa');
+    expect(wrapper.find('[data-test="confirmacion"]').exists()).toBe(false);
+    // El formulario sigue disponible para corregir el correo
+    expect(wrapper.find('[data-test="form-olvide"]').exists()).toBe(true);
   });
 
   it('con demasiadas solicitudes (429) avisa que espere un minuto', async () => {

@@ -5,12 +5,16 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, QueryFailedError, Repository } from 'typeorm';
+import { IsNull, QueryFailedError, Repository, SelectQueryBuilder } from 'typeorm';
+import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { RegistrarPresupuestoDto } from './dto/registrar-presupuesto.dto';
 import { UpdateEstadoProyectoDto } from './dto/update-estado-proyecto.dto';
-import { Proyecto } from './entities/proyecto.entity';
+import { ListarProyectosDto } from './dto/listar-proyectos.dto';
+import { ESTADOS_PROYECTO, Proyecto, type EstadoProyecto } from './entities/proyecto.entity';
+import { RolUsuario } from './entities/usuario.entity';
 import { normalizarMonto } from './presupuesto';
+import type { ListaProyectos, ProyectoResumen, ResumenCartera } from './types/proyectos.types';
 
 /** Código de violación de unicidad en PostgreSQL. */
 const PG_UNIQUE_VIOLATION = '23505';
@@ -57,6 +61,89 @@ export class ProyectosService {
       }
       throw e;
     }
+  }
+
+  /**
+   * RF-04 / SGP-71: listado paginado con búsqueda por código o nombre y filtro por estado.
+   * Administrador y Supervisor ven todos los proyectos; el Técnico solo aquellos donde está asignado (RN-10).
+   */
+  async listar(filtros: ListarProyectosDto, usuario: UsuarioAutenticado): Promise<ListaProyectos> {
+    const page = filtros.page ?? 1;
+    const limit = filtros.limit ?? 10;
+
+    const qb = this.consultaVisible(usuario);
+    if (filtros.q) qb.andWhere('(p.codigo ILIKE :q OR p.nombre ILIKE :q)', { q: `%${filtros.q}%` });
+    if (filtros.estado) qb.andWhere('p.estado = :estado', { estado: filtros.estado });
+
+    const total = await qb.getCount();
+    const { entities, raw } = await qb
+      .addSelect(
+        '(SELECT COUNT(*) FROM proyecto_equipo pe WHERE pe.proyecto_id = p.id AND pe.retirado_at IS NULL)',
+        'equipo_activo',
+      )
+      .orderBy('p.fecha_inicio', 'DESC')
+      .addOrderBy('p.codigo', 'ASC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawAndEntities<{ equipo_activo: string }>();
+
+    const items: ProyectoResumen[] = entities.map((p, i) => ({
+      id: p.id,
+      codigo: p.codigo,
+      nombre: p.nombre,
+      estado: p.estado,
+      presupuestoTotal: p.presupuestoTotal,
+      moneda: p.moneda,
+      fechaInicio: p.fechaInicio,
+      fechaFin: p.fechaFin,
+      cumplimientoPct: p.cumplimientoPct,
+      equipoActivo: Number(raw[i]?.equipo_activo ?? 0),
+    }));
+    return { items, total, page, limit };
+  }
+
+  /** Indicadores de la cartera que el usuario puede ver (panel del dashboard). */
+  async resumen(usuario: UsuarioAutenticado): Promise<ResumenCartera> {
+    const porEstadoFilas = await this.consultaVisible(usuario)
+      .select('p.estado', 'estado')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect("COALESCE(SUM(CASE WHEN p.moneda = 'BOB' THEN p.presupuesto_total ELSE 0 END), 0)", 'presupuesto')
+      .groupBy('p.estado')
+      .getRawMany<{ estado: EstadoProyecto; total: string; presupuesto: string }>();
+
+    const porEstado = Object.fromEntries(ESTADOS_PROYECTO.map((e) => [e, 0])) as Record<EstadoProyecto, number>;
+    let totalProyectos = 0;
+    let presupuesto = 0;
+    for (const fila of porEstadoFilas) {
+      porEstado[fila.estado] = Number(fila.total);
+      totalProyectos += Number(fila.total);
+      presupuesto += Number(fila.presupuesto);
+    }
+
+    const tecnicos = await this.consultaVisible(usuario)
+      .select('COUNT(DISTINCT pe.usuario_id)', 'total')
+      .innerJoin('proyecto_equipo', 'pe', 'pe.proyecto_id = p.id AND pe.retirado_at IS NULL')
+      .getRawOne<{ total: string }>();
+
+    return {
+      totalProyectos,
+      porEstado,
+      presupuestoBob: normalizarMonto(presupuesto.toFixed(2)),
+      tecnicosActivos: Number(tecnicos?.total ?? 0),
+    };
+  }
+
+  /** Proyectos que el usuario puede ver: todos, o solo los asignados si es Técnico. */
+  private consultaVisible(usuario: UsuarioAutenticado): SelectQueryBuilder<Proyecto> {
+    const qb = this.proyectos.createQueryBuilder('p');
+    if (usuario.rol === RolUsuario.TECNICO) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM proyecto_equipo pv
+                  WHERE pv.proyecto_id = p.id AND pv.usuario_id = :usuarioId AND pv.retirado_at IS NULL)`,
+        { usuarioId: usuario.id },
+      );
+    }
+    return qb;
   }
 
   async obtenerPorId(id: string): Promise<Proyecto> {

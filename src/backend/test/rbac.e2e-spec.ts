@@ -4,6 +4,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { ProblemDetailsFilter } from '../src/common/filters/problem-details.filter';
+import { borrarProyectosDePrueba } from './helpers/limpieza';
 
 /**
  * SGP-51 (CP-18) y SGP-68 (CP-23): cada rol solo opera en lo que le corresponde.
@@ -52,7 +53,10 @@ describe('Control de acceso por rol (e2e, RF-18)', () => {
     proyectoId = res.body.id;
   });
 
-  afterAll(() => app.close());
+  afterAll(async () => {
+    await borrarProyectosDePrueba(ds, 'PRY-RBAC-');
+    await app.close();
+  });
 
   it('sin sesión cualquier ruta protegida responde 401', async () => {
     await request(app.getHttpServer()).get(`/api/proyectos/${proyectoId}`).expect(401);

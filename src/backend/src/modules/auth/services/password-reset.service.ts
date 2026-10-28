@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, MoreThan, Repository } from 'typeorm';
@@ -11,12 +11,13 @@ import { correoRestablecer } from '../utils/correo-restablecer';
 import { hashPassword } from '../utils/password';
 import { AuthService } from './auth.service';
 
+const MSG_CORREO_NO_REGISTRADO = 'No encontramos una cuenta activa con ese correo. Revisa que esté bien escrito.';
 const MSG_ENLACE_INVALIDO = 'El enlace no es válido o ya venció. Pide uno nuevo desde "¿Olvidaste tu contraseña?".';
 const sha256 = (valor: string) => createHash('sha256').update(valor).digest('hex');
 
 /**
  * RF-33 / SGP-110: recuperación de contraseña por correo.
- * - La solicitud responde siempre igual: no revela qué correos están registrados.
+ * - Si el correo no pertenece a una cuenta activa responde 404 con un mensaje claro (el usuario sabe que se equivocó).
  * - El enlace es de un solo uso y vence a los 30 min (CP-33); pedir uno nuevo invalida los anteriores.
  * - Al restablecer se desbloquea la cuenta y se cierran todas sus sesiones.
  */
@@ -35,12 +36,12 @@ export class PasswordResetService {
     this.urlBase = config.get<string>('APP_BASE_URL', 'http://localhost:5173').replace(/\/+$/, '');
   }
 
-  /** Genera el enlace y lo envía. Nunca lanza por correo inexistente ni por fallo del SMTP. */
+  /** Genera el enlace y lo envía. Lanza 404 si no hay una cuenta activa con ese correo; un fallo del SMTP no lo rompe. */
   async solicitar(email: string): Promise<void> {
     const usuario = await this.usuarios.findOne({
       where: { email: email.trim(), activo: true, deletedAt: IsNull() },
     });
-    if (!usuario) return;
+    if (!usuario) throw new NotFoundException(MSG_CORREO_NO_REGISTRADO);
 
     const ahora = new Date();
     // Los enlaces anteriores sin usar dejan de servir

@@ -251,11 +251,11 @@ watch(() => props.id, () => cargar(), { immediate: true });
 <template>
   <div class="mx-auto max-w-5xl space-y-6">
     <RouterLink
-      :to="{ name: 'dashboard' }"
+      :to="{ name: 'proyectos' }"
       class="inline-flex items-center gap-2 text-sm text-slate-500 transition-colors hover:text-slate-800"
     >
       <i class="pi pi-arrow-left text-xs" />
-      Volver al dashboard
+      Volver a proyectos
     </RouterLink>
 
     <section
@@ -319,6 +319,22 @@ watch(() => props.id, () => cargar(), { immediate: true });
         >
           {{ proyecto.descripcion }}
         </p>
+        <RouterLink
+          v-slot="{ navigate }"
+          :to="{ name: 'marco-logico-proyecto', params: { id: proyecto.id } }"
+          custom
+        >
+          <Button
+            label="Ver marco lógico"
+            icon="pi pi-sitemap"
+            size="small"
+            severity="secondary"
+            outlined
+            class="mt-4"
+            data-test="ver-marco-logico"
+            @click="navigate"
+          />
+        </RouterLink>
 
         <div class="mt-6 border-t border-slate-100 pt-5">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
