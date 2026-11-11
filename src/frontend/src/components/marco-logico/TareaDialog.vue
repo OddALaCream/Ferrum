@@ -7,11 +7,13 @@ import Select from 'primevue/select';
 import { reactive, ref, watch } from 'vue';
 import type { TecnicoProyecto } from '@/api/equipo';
 import { crearTarea, editarTarea, type EstadoTarea, type Tarea } from '@/api/marcoLogico';
+import { formatoFecha } from '@/utils/formato';
 import { mensajeDeError } from '@/utils/errores';
 
 const props = defineProps<{
   proyectoId: string;
   actividadId: string;
+  fechaFinActividad: string;
   equipo: TecnicoProyecto[];
   tarea: Tarea | null;
 }>();
@@ -36,6 +38,10 @@ watch(visible, (abierta) => {
 async function guardar() {
   if (guardando.value) return;
   if (!form.nombre.trim()) { error.value = 'Describe qué hay que hacer.'; return; }
+  if (form.fechaLimite && form.fechaLimite > props.fechaFinActividad) {
+    error.value = `La fecha límite de la tarea no puede superar la fecha de fin de la actividad (${formatoFecha(props.fechaFinActividad)}).`;
+    return;
+  }
   guardando.value = true;
   error.value = '';
   try {
@@ -105,9 +111,13 @@ async function guardar() {
           id="tarea-fecha"
           v-model="form.fechaLimite"
           type="date"
+          :max="fechaFinActividad"
           :disabled="guardando"
         />
       </div>
+      <p class="text-xs text-slate-500">
+        La actividad finaliza el {{ formatoFecha(fechaFinActividad) }}. La fecha límite de la tarea debe ser igual o anterior.
+      </p>
       <div
         v-if="tarea"
         class="flex flex-col gap-1"

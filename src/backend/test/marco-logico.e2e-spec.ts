@@ -332,6 +332,23 @@ describe('Marco lógico (e2e, RF-05 a RF-15, RF-24, RF-25)', () => {
       expect(a.tareas.filter((t: { nombre: string }) => nombres.includes(t.nombre))).toHaveLength(3);
     });
 
+    it('rechaza tareas posteriores al fin de su actividad al crear y editar, sin guardar los cambios', async () => {
+      const ruta = `${base()}/actividades/${continuaId}/tareas`;
+      const creada = await request(http()).post(ruta).set(bearer('tecnico'))
+        .send({ nombre: 'Entrega al finalizar', fechaLimite: '2027-01-29' }).expect(201);
+      const invalida = await request(http()).post(ruta).set(bearer('tecnico'))
+        .send({ nombre: 'No se debe guardar', fechaLimite: '2027-01-30' }).expect(422);
+      expect(invalida.body.detail).toContain('no puede superar');
+      await request(http()).patch(`${base()}/tareas/${creada.body.id}`).set(bearer('tecnico'))
+        .send({ nombre: 'No se debe cambiar', fechaLimite: '2027-01-30' }).expect(422);
+      const arbol = await request(http()).get(`${base()}/marco-logico`).set(bearer('tecnico')).expect(200);
+      const actividad = arbol.body.resultados[0].actividades.find((a: { id: string }) => a.id === continuaId);
+      expect(actividad.tareas.find((t: { id: string }) => t.id === creada.body.id)).toMatchObject({ nombre: 'Entrega al finalizar', fechaLimite: '2027-01-29' });
+      expect(actividad.tareas.some((t: { nombre: string }) => t.nombre === 'No se debe guardar')).toBe(false);
+      await request(http()).patch(`${base()}/tareas/${creada.body.id}`).set(bearer('tecnico'))
+        .send({ fechaLimite: null }).expect(200);
+    });
+
     it('no permite tareas huérfanas, vacías ni con responsable ajeno al equipo', async () => {
       await request(http()).post(`${base()}/actividades/00000000-0000-4000-8000-000000000001/tareas`)
         .set(bearer('admin')).send({ nombre: 'Huérfana' }).expect(404);
