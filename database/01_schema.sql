@@ -15,7 +15,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- crypt() para el seed de desarrollo
 -- ---------------------------------------------------------------------
 -- 1. TIPOS ENUMERADOS
 -- ---------------------------------------------------------------------
-CREATE TYPE rol_usuario      AS ENUM ('DIRECTOR', 'ADMINISTRATIVO', 'TECNICO', 'FINANCIADOR');
+CREATE TYPE rol_usuario      AS ENUM ('ADMINISTRADOR', 'SUPERVISOR', 'TECNICO', 'FINANCIADOR');
 CREATE TYPE moneda_tipo      AS ENUM ('BOB', 'USD', 'EUR');    -- RF-02
 CREATE TYPE estado_proyecto  AS ENUM ('PLANIFICACION', 'EN_EJECUCION', 'PAUSADO', 'CERRADO');
 CREATE TYPE estado_actividad AS ENUM ('PENDIENTE', 'EN_CURSO', 'COMPLETADA', 'RETRASADA');
@@ -24,6 +24,7 @@ CREATE TYPE estado_avance    AS ENUM ('BORRADOR', 'ENVIADO', 'APROBADO', 'OBSERV
 CREATE TYPE estado_solicitud AS ENUM ('PENDIENTE', 'APROBADA', 'RECHAZADA');
 CREATE TYPE estado_tramo     AS ENUM ('PENDIENTE', 'HABILITADO', 'DESEMBOLSADO');
 CREATE TYPE tipo_condicion   AS ENUM ('IOV', 'RESULTADO', 'PROYECTO');
+CREATE TYPE tipo_cronograma  AS ENUM ('CONTINUO', 'DISCRETO');  -- RF-06 / cronograma de actividades
 
 -- ---------------------------------------------------------------------
 -- 2. FUNCIÓN GENÉRICA updated_at
@@ -107,7 +108,7 @@ CREATE TABLE proyectos (
   nombre            varchar(250)     NOT NULL,
   descripcion       text,
   objetivo_general  text,
-  financiador_id    uuid             NOT NULL REFERENCES financiadores (id) ON DELETE RESTRICT,
+  financiador_id    uuid             REFERENCES financiadores (id) ON DELETE RESTRICT,
   presupuesto_total numeric(14,2)    NOT NULL DEFAULT 0 CHECK (presupuesto_total >= 0),
   moneda            moneda_tipo      NOT NULL DEFAULT 'BOB',
   fecha_inicio      date             NOT NULL,
@@ -141,7 +142,8 @@ CREATE INDEX ix_equipo_usuario ON proyecto_equipo (usuario_id) WHERE retirado_at
 CREATE INDEX ix_equipo_proyecto_historial ON proyecto_equipo (proyecto_id);   -- historial completo
 
 -- ---------------------------------------------------------------------
--- 5. MARCO LÓGICO: Proyecto → Obj Especifico → Resultado → I.O.V. / Actividad
+-- 5. MARCO LÓGICO: Proyecto → Obj. Específico → Resultado → I.O.V. / Actividad
+--     (SGP-162: objetivos_especificos; resultados viven a nivel de proyecto)
 -- ---------------------------------------------------------------------
 CREATE TABLE objetivos_especificos (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -155,15 +157,20 @@ CREATE TABLE objetivos_especificos (
 
 CREATE TABLE resultados (
   id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  objetivo_especifico_id uuid          NOT NULL REFERENCES objetivos_especificos (id) ON DELETE RESTRICT,
+  proyecto_id            uuid          NOT NULL REFERENCES proyectos (id) ON DELETE RESTRICT,
+  -- Vínculo opcional al OE (SGP-162); el código único es por proyecto.
+  objetivo_especifico_id uuid          REFERENCES objetivos_especificos (id) ON DELETE RESTRICT,
   codigo                 varchar(20)   NOT NULL,
   descripcion            text          NOT NULL,
   peso                   numeric(5,2)  NOT NULL DEFAULT 0 CHECK (peso BETWEEN 0 AND 100),
   cumplimiento_pct       numeric(5,2)  NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
   created_at             timestamptz   NOT NULL DEFAULT now(),
   updated_at             timestamptz   NOT NULL DEFAULT now(),
-  UNIQUE (objetivo_especifico_id, codigo)
+  UNIQUE (proyecto_id, codigo)
 );
+CREATE UNIQUE INDEX uq_resultados_oe_codigo
+  ON resultados (objetivo_especifico_id, codigo)
+  WHERE objetivo_especifico_id IS NOT NULL;
 
 -- I.O.V. = Indicador Objetivamente Verificable
 CREATE TABLE iov (
@@ -175,7 +182,7 @@ CREATE TABLE iov (
   linea_base               numeric(14,2) NOT NULL DEFAULT 0,
   meta                     numeric(14,2) NOT NULL,
   peso                     numeric(5,2)  NOT NULL DEFAULT 0 CHECK (peso BETWEEN 0 AND 100),
-  tipo_fuente_verificacion varchar(150)  NOT NULL,       -- p. ej. "Acta firmada", "Informe técnico"
+  tipo_fuente_verificacion text          NOT NULL,       -- p. ej. "Acta firmada", "Informe técnico"
   responsable_id           uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
   valor_actual             numeric(14,2) NOT NULL DEFAULT 0, -- acumulado de avances aprobados
   cumplimiento_pct         numeric(5,2)  NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
@@ -195,26 +202,41 @@ CREATE TABLE actividades (
   nombre                   varchar(250)     NOT NULL,
   descripcion              text,
   responsable_id           uuid REFERENCES usuarios (id) ON DELETE RESTRICT,
-  fecha_planificada_inicio date             NOT NULL,
-  fecha_planificada_fin    date             NOT NULL,
+  fecha_inicio             date             NOT NULL,
+  fecha_fin                date             NOT NULL,
   fecha_real_inicio        date,
   fecha_real_fin           date,
   externalidad             text,                                          -- justificación si hay desfase
   estado                   estado_actividad NOT NULL DEFAULT 'PENDIENTE',
+  tipo_cronograma          tipo_cronograma  NOT NULL DEFAULT 'CONTINUO',
   meta_cuantitativa        numeric(14,2),                                 -- meta de la actividad (ej. 5 talleres)
+  unidad_meta              varchar(150),
+  fuentes_verificacion     text,
   cumplimiento_pct         numeric(5,2)     NOT NULL DEFAULT 0 CHECK (cumplimiento_pct BETWEEN 0 AND 100),
   created_at               timestamptz      NOT NULL DEFAULT now(),
   updated_at               timestamptz      NOT NULL DEFAULT now(),
   UNIQUE (resultado_id, codigo),
-  CONSTRAINT ck_actividad_fechas_planificadas CHECK (fecha_planificada_fin >= fecha_planificada_inicio),
+  CONSTRAINT ck_actividad_fechas_planificadas CHECK (fecha_fin >= fecha_inicio),
   CONSTRAINT ck_actividad_fechas_reales CHECK (fecha_real_fin IS NULL OR fecha_real_inicio IS NULL OR fecha_real_fin >= fecha_real_inicio),
   -- el I.O.V. debe pertenecer al MISMO resultado que la actividad (si iov_id es NULL no se evalúa)
   FOREIGN KEY (iov_id, resultado_id) REFERENCES iov (id, resultado_id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_actividades_iov ON actividades (iov_id);
 CREATE INDEX ix_actividades_responsable ON actividades (responsable_id);
-CREATE INDEX ix_actividades_vencimiento ON actividades (fecha_planificada_fin)
+CREATE INDEX ix_actividades_vencimiento ON actividades (fecha_fin)
   WHERE estado IN ('PENDIENTE', 'EN_CURSO');
+
+-- Sesiones puntuales de una actividad DISCRETA (talleres, reuniones…).
+CREATE TABLE actividad_sesiones (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actividad_id  uuid        NOT NULL REFERENCES actividades (id) ON DELETE CASCADE,
+  fecha         date        NOT NULL,
+  realizada     boolean     NOT NULL DEFAULT false,
+  realizada_at  timestamptz,
+  realizada_por uuid        REFERENCES usuarios (id) ON DELETE RESTRICT,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (actividad_id, fecha)
+);
 
 CREATE TABLE tareas (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -572,15 +594,13 @@ BEGIN
   SELECT proyecto_id INTO v_proy_tramo FROM tramos WHERE id = NEW.tramo_id;
 
   IF NEW.tipo = 'IOV' THEN
-    SELECT oe.proyecto_id INTO v_proy_ref
-      FROM iov i 
+    SELECT r.proyecto_id INTO v_proy_ref
+      FROM iov i
       JOIN resultados r ON r.id = i.resultado_id
-      JOIN objetivos_especificos oe ON oe.id = r.objetivo_especifico_id
      WHERE i.id = NEW.iov_id;
   ELSIF NEW.tipo = 'RESULTADO' THEN
-    SELECT oe.proyecto_id INTO v_proy_ref 
+    SELECT r.proyecto_id INTO v_proy_ref
       FROM resultados r
-      JOIN objetivos_especificos oe ON oe.id = r.objetivo_especifico_id
      WHERE r.id = NEW.resultado_id;
   ELSE
     RETURN NEW;                       -- tipo PROYECTO: usa el proyecto del tramo
@@ -689,10 +709,9 @@ SELECT p.id,
           LEFT JOIN iov i         ON i.id  = a.iov_id
           LEFT JOIN actividades c ON c.id  = a.actividad_id
           JOIN resultados r       ON r.id  = COALESCE(i.resultado_id, c.resultado_id)
-          JOIN objetivos_especificos oe ON oe.id = r.objetivo_especifico_id
-         WHERE oe.proyecto_id = p.id AND a.estado = 'ENVIADO')           AS avances_por_revisar
+         WHERE r.proyecto_id = p.id AND a.estado = 'ENVIADO')            AS avances_por_revisar
   FROM proyectos p
-  JOIN financiadores f ON f.id = p.financiador_id
+  LEFT JOIN financiadores f ON f.id = p.financiador_id
  WHERE p.deleted_at IS NULL;
 
 COMMIT;
