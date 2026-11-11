@@ -16,9 +16,12 @@ const api = vi.hoisted(() => ({
   crearTarea: vi.fn(),
   cambiarEstadoTarea: vi.fn(),
   obtenerEquipo: vi.fn(),
+  obtenerObjetivos: vi.fn(),
+  crearObjetivo: vi.fn(),
 }));
 vi.mock('@/api/marcoLogico', async (original) => ({ ...(await original<typeof import('@/api/marcoLogico')>()), ...api }));
 vi.mock('@/api/equipo', async (original) => ({ ...(await original<typeof import('@/api/equipo')>()), obtenerEquipo: api.obtenerEquipo }));
+vi.mock('@/api/objetivos', () => ({ obtenerObjetivos: api.obtenerObjetivos, crearObjetivo: api.crearObjetivo }));
 
 /** Id del usuario que crea `sesionDePrueba`. */
 const YO = 'u-prueba';
@@ -93,6 +96,16 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
     vi.clearAllMocks();
     api.obtenerMarcoLogico.mockResolvedValue(arbol());
     api.obtenerEquipo.mockResolvedValue([{ id: YO, nombre: 'Lucía Condori', email: 'l@x.org', fechaAsignacion: '2026-09-01' }]);
+    api.obtenerObjetivos.mockResolvedValue([
+      {
+        id: 'oe-1',
+        proyectoId: 'p-1',
+        codigo: 'OE.1',
+        descripcion: 'Desarrollar habilidades parentales',
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
   });
 
   it('muestra el resultado con sus indicadores y actividades', async () => {
@@ -114,6 +127,16 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
     expect(wrapper.get('[data-test="actividad-A.1.1"] [data-test="estado-actividad"]').text()).toBe('Retrasada');
     expect(wrapper.get('[data-test="total-retrasadas"]').text()).toBe('1');
     expect(wrapper.get('[data-test="actividad-A.1.1"]').text()).toContain('Lucía Condori');
+  });
+
+  it('lista objetivos específicos y permite abrir el diálogo de alta (SGP-162)', async () => {
+    const wrapper = await montar('administrador');
+
+    expect(wrapper.get('[data-test="tabla-objetivos"]').text()).toContain('OE.1');
+    expect(wrapper.get('[data-test="total-objetivos"]').text()).toBe('1');
+    expect(wrapper.find('[data-test="nuevo-objetivo"]').exists()).toBe(true);
+    await wrapper.get('[data-test="nuevo-objetivo"]').trigger('click');
+    expect((wrapper.vm as unknown as { dialogoObjetivo: boolean }).dialogoObjetivo).toBe(true);
   });
 
   it('el Administrador puede crear resultados, indicadores y actividades', async () => {

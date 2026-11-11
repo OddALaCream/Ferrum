@@ -3,6 +3,7 @@
 -- Idempotente: se puede ejecutar varias veces.
 -- Contraseña de los usuarios de prueba:  Serfamilia2026
 -- (bcrypt costo 12 generado con pgcrypto; compatible con la librería bcrypt de Node)
+-- Requiere el esquema actual (01_schema.sql / migraciones aplicadas).
 -- =====================================================================
 
 -- 1. Financiador
@@ -29,7 +30,8 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO proyectos (id, codigo, nombre, descripcion, objetivo_general, financiador_id, presupuesto_total, moneda,
                        fecha_inicio, fecha_fin, estado, creado_por) VALUES
   ('33333333-3333-4333-8333-333333333333', 'PRY-DEMO-001', 'Proyecto de demostración',
-   'Proyecto de ejemplo para desarrollo y pruebas.', 'Mejorar las condiciones familiares en la región', '11111111-1111-4111-8111-111111111111',
+   'Proyecto de ejemplo para desarrollo y pruebas.', 'Mejorar las condiciones familiares en la región',
+   '11111111-1111-4111-8111-111111111111',
    100000.00, 'BOB', '2026-01-01', '2026-12-31', 'EN_EJECUCION',
    '22222222-2222-4222-8222-222222222221')
 ON CONFLICT (id) DO NOTHING;
@@ -40,30 +42,39 @@ INSERT INTO proyecto_equipo (id, proyecto_id, usuario_id, asignado_por) VALUES
    '22222222-2222-4222-8222-222222222222', '22222222-2222-4222-8222-222222222221')
 ON CONFLICT (id) DO NOTHING;
 
--- 5. Marco Lógico: Objetivo Específico
+-- 5. Marco Lógico: Objetivo Específico (SGP-162)
 INSERT INTO objetivos_especificos (id, proyecto_id, codigo, descripcion) VALUES
   ('55555555-5555-4555-8555-555555555551', '33333333-3333-4333-8333-333333333333', 'OE.1',
    'Desarrollar habilidades parentales en familias en situación de riesgo')
 ON CONFLICT (id) DO NOTHING;
 
--- 6. Marco Lógico: Resultado (ahora vinculado a Objetivo Específico)
+-- 6. Marco Lógico: Resultado (por proyecto; vínculo opcional al OE)
 INSERT INTO resultados (id, proyecto_id, objetivo_especifico_id, codigo, descripcion, peso) VALUES
-  ('55555555-5555-4555-8555-555555555555', '33333333-3333-4333-8333-333333333333', '55555555-5555-4555-8555-555555555551', 'R1',
+  ('55555555-5555-4555-8555-555555555555', '33333333-3333-4333-8333-333333333333',
+   '55555555-5555-4555-8555-555555555551', 'R.1',
    'Familias capacitadas en habilidades parentales', 100.00)
 ON CONFLICT (id) DO NOTHING;
 
 -- 7. Marco Lógico: Indicador (I.O.V.)
 INSERT INTO iov (id, resultado_id, codigo, descripcion, unidad, linea_base, meta, peso,
                  tipo_fuente_verificacion, responsable_id) VALUES
-  ('66666666-6666-4666-8666-666666666666', '55555555-5555-4555-8555-555555555555', 'R1-I1',
+  ('66666666-6666-4666-8666-666666666666', '55555555-5555-4555-8555-555555555555', 'I.O.V. 1.1',
    'Número de familias que completan el ciclo de talleres', 'familias', 0, 50, 50.00,
    'Lista de asistencia firmada', '22222222-2222-4222-8222-222222222222')
 ON CONFLICT (id) DO NOTHING;
 
--- 8. Marco Lógico: Actividad (Para que el técnico pruebe el Cronograma y Desembolsos)
+-- 8. Marco Lógico: Actividad (cronograma / desembolsos del técnico)
 INSERT INTO actividades (id, resultado_id, iov_id, codigo, nombre, descripcion, responsable_id,
-                         fecha_inicio, fecha_fin, estado, meta_cuantitativa, cumplimiento_pct) VALUES
-  ('77777777-7777-4777-8777-777777777777', '55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666', 
-   'A1.1', 'Taller introductorio a la comunidad', 'Primer taller presencial en campo', 
-   '22222222-2222-4222-8222-222222222222', '2026-03-01', '2026-03-15', 'PENDIENTE', 1, 0)
+                         fecha_inicio, fecha_fin, estado, tipo_cronograma,
+                         meta_cuantitativa, unidad_meta, cumplimiento_pct) VALUES
+  ('77777777-7777-4777-8777-777777777777', '55555555-5555-4555-8555-555555555555',
+   '66666666-6666-4666-8666-666666666666',
+   'A.1.1', 'Taller introductorio a la comunidad', 'Primer taller presencial en campo',
+   '22222222-2222-4222-8222-222222222222', '2026-03-01', '2026-03-15', 'PENDIENTE', 'DISCRETO',
+   1, 'taller', 0)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO actividad_sesiones (id, actividad_id, fecha, realizada) VALUES
+  ('88888888-8888-4888-8888-888888888881', '77777777-7777-4777-8777-777777777777', '2026-03-05', false),
+  ('88888888-8888-4888-8888-888888888882', '77777777-7777-4777-8777-777777777777', '2026-03-12', false)
 ON CONFLICT (id) DO NOTHING;
