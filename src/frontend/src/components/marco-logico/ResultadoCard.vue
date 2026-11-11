@@ -114,7 +114,7 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
                 Código
               </th>
               <th class="px-3 py-2 font-medium">
-                Indicador
+                Indicador / responsable
               </th>
               <th class="w-40 px-3 py-2 font-medium">
                 Meta
@@ -136,6 +136,7 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
               </td>
               <td class="px-3 py-2 text-slate-700">
                 {{ i.descripcion }}
+                <span class="mt-1 block text-xs text-slate-500">Responsable: {{ i.responsableId ? nombres.get(i.responsableId) ?? 'Técnico fuera del equipo activo' : 'Sin asignar' }}</span>
               </td>
               <td class="px-3 py-2 text-slate-800">
                 <span class="font-semibold tabular-nums">{{ formatoNumero(i.meta) }}</span> {{ i.unidad }}
@@ -182,6 +183,9 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
           :key="a.id"
           :actividad="a"
           :proyecto-id="proyectoId"
+          :equipo="equipo"
+          :usuario-id="usuarioId"
+          :puede-actualizar-asignadas="esTecnico && !proyectoCerrado"
           :puede-operar="puedeOperar(a.responsableId)"
           :nombre-responsable="a.responsableId ? nombres.get(a.responsableId) : undefined"
           @cambio="emit('cambio')"

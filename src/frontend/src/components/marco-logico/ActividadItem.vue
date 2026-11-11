@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
 import InputNumber from 'primevue/inputnumber';
-import InputText from 'primevue/inputtext';
 import Tag from 'primevue/tag';
 import { useToast } from 'primevue/usetoast';
 import { computed, ref } from 'vue';
 import {
   cambiarEstadoActividad,
   cambiarEstadoTarea,
-  crearTarea,
   marcarSesion,
   type Actividad,
   type EstadoActividad,
@@ -17,6 +15,8 @@ import {
 import { formatoFecha, formatoFechaCorta, formatoNumero } from '@/utils/formato';
 import { mensajeDeError } from '@/utils/errores';
 import BarraAvance from './BarraAvance.vue';
+import TareaDialog from './TareaDialog.vue';
+import type { TecnicoProyecto } from '@/api/equipo';
 
 /**
  * Una actividad con su cronograma. El técnico responsable solo anota lo cumplido:
@@ -29,13 +29,25 @@ const props = defineProps<{
   /** Administrador o técnico responsable de esta actividad, con el proyecto abierto. */
   puedeOperar: boolean;
   nombreResponsable?: string;
+  equipo: TecnicoProyecto[];
+  usuarioId?: string | null;
+  puedeActualizarAsignadas?: boolean;
 }>();
 const emit = defineEmits<{ cambio: [] }>();
 
 const toast = useToast();
 const trabajando = ref(false);
 const avance = ref<number | null>(null);
-const nuevaTarea = ref('');
+const dialogoTarea = ref(false);
+const tareaSeleccionada = ref<Tarea | null>(null);
+const nombres = computed(() => new Map(props.equipo.map((t) => [t.id, t.nombre])));
+const puedeEditarTarea = (t: Tarea) => props.puedeOperar ||
+  (!!props.puedeActualizarAsignadas && !!props.usuarioId && t.responsableId === props.usuarioId);
+const estadosTarea = { PENDIENTE: 'Pendiente', EN_CURSO: 'En curso', COMPLETADA: 'Completada' };
+function abrirTarea(tarea: Tarea | null = null) {
+  tareaSeleccionada.value = tarea;
+  dialogoTarea.value = true;
+}
 
 const ESTADOS: Record<EstadoActividad, { label: string; icono: string; clases: string }> = {
   PENDIENTE: { label: 'Pendiente', icono: 'pi pi-clock', clases: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-500/20' },
@@ -87,13 +99,6 @@ const alternarTarea = (t: Tarea) =>
     () => cambiarEstadoTarea(props.proyectoId, t.id, t.estado === 'COMPLETADA' ? 'PENDIENTE' : 'COMPLETADA'),
     'No se pudo actualizar la tarea',
   );
-
-async function agregarTarea() {
-  const nombre = nuevaTarea.value.trim();
-  if (!nombre) return;
-  await ejecutar(() => crearTarea(props.proyectoId, props.actividad.id, { nombre }), 'No se pudo crear la tarea');
-  nuevaTarea.value = '';
-}
 
 const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite && t.fechaLimite < hoy;
 </script>
@@ -265,12 +270,12 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
         <li
           v-for="t in actividad.tareas"
           :key="t.id"
-          class="flex items-center gap-2 text-sm"
+          class="flex flex-wrap items-center gap-2 text-sm"
         >
           <button
             type="button"
-            :disabled="!puedeOperar || trabajando"
-            :class="['text-base', t.estado === 'COMPLETADA' ? 'text-green-600' : 'text-slate-400', puedeOperar ? 'hover:text-violet-700' : '']"
+            :disabled="!puedeEditarTarea(t) || trabajando"
+            :class="['text-base', t.estado === 'COMPLETADA' ? 'text-green-600' : 'text-slate-400', puedeEditarTarea(t) ? 'hover:text-violet-700' : '']"
             :aria-label="t.estado === 'COMPLETADA' ? `Reabrir ${t.nombre}` : `Completar ${t.nombre}`"
             :aria-pressed="t.estado === 'COMPLETADA'"
             data-test="tarea-toggle"
@@ -280,6 +285,28 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
           </button>
           <span :class="t.estado === 'COMPLETADA' ? 'text-slate-400 line-through' : 'text-slate-700'">{{ t.nombre }}</span>
           <span
+            class="text-xs text-slate-500"
+            data-test="tarea-estado"
+          >{{ estadosTarea[t.estado] }}</span>
+          <span
+            class="text-xs text-slate-500"
+            data-test="tarea-responsable"
+          >{{ t.responsableId ? nombres.get(t.responsableId) ?? 'Técnico fuera del equipo activo' : 'Sin asignar' }}</span>
+          <span
+            v-if="t.cerradoAt"
+            class="text-xs text-green-700"
+          >Cerrada el {{ formatoFecha(t.cerradoAt.slice(0, 10)) }}</span>
+          <Button
+            v-if="puedeEditarTarea(t)"
+            label="Editar"
+            size="small"
+            severity="secondary"
+            text
+            :disabled="trabajando"
+            data-test="editar-tarea"
+            @click="abrirTarea(t)"
+          />
+          <span
             v-if="t.fechaLimite"
             :class="['ml-auto shrink-0 text-xs', tareaVencida(t) ? 'font-medium text-red-600' : 'text-slate-400']"
           >
@@ -287,30 +314,25 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
           </span>
         </li>
       </ul>
-      <form
+      <Button
         v-if="puedeOperar"
-        class="mt-2 flex gap-2"
-        @submit.prevent="agregarTarea"
-      >
-        <InputText
-          v-model="nuevaTarea"
-          placeholder="Nueva tarea…"
-          size="small"
-          class="flex-1"
-          maxlength="250"
-          :aria-label="`Nueva tarea de ${actividad.codigo}`"
-          data-test="nueva-tarea"
-        />
-        <Button
-          type="submit"
-          icon="pi pi-plus"
-          size="small"
-          severity="secondary"
-          :disabled="trabajando || !nuevaTarea.trim()"
-          aria-label="Agregar tarea"
-          data-test="agregar-tarea"
-        />
-      </form>
+        label="Nueva tarea"
+        icon="pi pi-plus"
+        class="mt-2"
+        size="small"
+        severity="secondary"
+        :disabled="trabajando"
+        data-test="nueva-tarea"
+        @click="abrirTarea()"
+      />
+      <TareaDialog
+        v-model:visible="dialogoTarea"
+        :proyecto-id="proyectoId"
+        :actividad-id="actividad.id"
+        :equipo="equipo"
+        :tarea="tareaSeleccionada"
+        @guardado="emit('cambio')"
+      />
     </div>
   </article>
 </template>

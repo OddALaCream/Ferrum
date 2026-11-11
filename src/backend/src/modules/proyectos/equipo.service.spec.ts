@@ -44,7 +44,7 @@ describe('EquipoService', () => {
       {
         usuarioId: TECNICO,
         asignadoAt: new Date('2026-01-15T10:00:00.000Z'),
-        usuario: { nombre: 'Técnico Demo', email: 'tecnico@serfamilia.test' },
+        usuario: { nombre: 'Técnico Demo', email: 'tecnico@serfamilia.test', activo: true, rol: RolUsuario.TECNICO },
       },
     ]);
 
@@ -58,6 +58,16 @@ describe('EquipoService', () => {
     ]);
   });
 
+  it('no ofrece como responsables usuarios inactivos, eliminados o con otro rol', async () => {
+    const usuario = { nombre: 'Técnico', email: 't@test.org', activo: true, rol: RolUsuario.TECNICO };
+    equipo.find.mockResolvedValue([
+      { usuarioId: 'inactivo', usuario: { ...usuario, activo: false } },
+      { usuarioId: 'eliminado', usuario: { ...usuario, deletedAt: new Date() } },
+      { usuarioId: 'supervisor', usuario: { ...usuario, rol: RolUsuario.SUPERVISOR } },
+    ]);
+    await expect(service.listar(PROYECTO)).resolves.toEqual([]);
+  });
+
   it('asigna con asignado_por del Director seed', async () => {
     equipo.findOne
       .mockResolvedValueOnce(null) // sin asignación activa previa
@@ -65,7 +75,7 @@ describe('EquipoService', () => {
         id: 'asig-nueva',
         usuarioId: TECNICO,
         asignadoAt: new Date('2026-03-01T12:00:00.000Z'),
-        usuario: { nombre: 'Técnico Demo', email: 'tecnico@serfamilia.test' },
+        usuario: { nombre: 'Técnico Demo', email: 'tecnico@serfamilia.test', activo: true, rol: RolUsuario.TECNICO },
       });
     usuarios.findOne.mockResolvedValue({
       id: TECNICO,

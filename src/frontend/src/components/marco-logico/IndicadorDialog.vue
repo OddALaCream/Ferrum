@@ -5,15 +5,18 @@ import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Textarea from 'primevue/textarea';
+import Select from 'primevue/select';
+import type { TecnicoProyecto } from '@/api/equipo';
 import { computed, reactive, ref, watch } from 'vue';
 import { crearIndicador } from '@/api/marcoLogico';
 import { mensajeDeError } from '@/utils/errores';
 
-const props = defineProps<{ proyectoId: string; resultadoId: string | null; resultadoCodigo: string; sugerencia: string }>();
+const props = defineProps<{ proyectoId: string; resultadoId: string | null; resultadoCodigo: string; sugerencia: string; equipo: TecnicoProyecto[] }>();
 const visible = defineModel<boolean>('visible', { required: true });
 const emit = defineEmits<{ guardado: [] }>();
 
 const form = reactive({
+  responsableId: null as string | null,
   codigo: '',
   descripcion: '',
   unidad: '',
@@ -28,7 +31,7 @@ const errorServidor = ref<string | null>(null);
 
 watch(visible, (abierto) => {
   if (!abierto) return;
-  Object.assign(form, { codigo: props.sugerencia, descripcion: '', unidad: '', lineaBase: 0, meta: null, peso: null, fuenteVerificacion: '' });
+  Object.assign(form, { responsableId: null, codigo: props.sugerencia, descripcion: '', unidad: '', lineaBase: 0, meta: null, peso: null, fuenteVerificacion: '' });
   enviado.value = false;
   errorServidor.value = null;
 });
@@ -51,6 +54,7 @@ async function guardar() {
   guardando.value = true;
   try {
     await crearIndicador(props.proyectoId, props.resultadoId, {
+      ...(form.responsableId ? { responsableId: form.responsableId } : {}),
       codigo: form.codigo.trim(),
       descripcion: form.descripcion.trim(),
       unidad: form.unidad.trim(),
@@ -227,6 +231,23 @@ async function guardar() {
           :max="100"
           suffix=" %"
           :max-fraction-digits="2"
+          :disabled="guardando"
+        />
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label
+          for="iov-responsable"
+          class="text-sm font-medium text-slate-700"
+        >Técnico responsable</label>
+        <Select
+          v-model="form.responsableId"
+          input-id="iov-responsable"
+          aria-label="Técnico responsable"
+          :options="equipo"
+          option-label="nombre"
+          option-value="id"
+          placeholder="Sin asignar"
+          show-clear
           :disabled="guardando"
         />
       </div>

@@ -310,6 +310,53 @@ describe('Marco lógico (e2e, RF-05 a RF-15, RF-24, RF-25)', () => {
     });
   });
 
+  describe('Aceptación SGP-81 y SGP-111', () => {
+    it('CP-25: valida el responsable de I.O.V. al crear y editar', async () => {
+      const [{ id: supervisorId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'supervisor@serfamilia.test'`);
+      const ruta = `${base()}/resultados/${resultadoId}/indicadores`;
+      await request(http()).post(ruta).set(bearer('admin'))
+        .send({ codigo: 'I.O.V. 1.3', descripcion: 'Participantes', unidad: 'personas', meta: 5, fuenteVerificacion: 'Actas', responsableId: supervisorId }).expect(422);
+      await request(http()).patch(`${ruta}/${indicadorId}`).set(bearer('admin')).send({ responsableId: tecnicoId }).expect(200);
+      await request(http()).patch(`${ruta}/${indicadorId}`).set(bearer('admin')).send({ responsableId: supervisorId }).expect(422);
+    });
+
+    it('CP-24: tres tareas conservan descripción, responsable, fecha y estado dentro de su actividad', async () => {
+      const nombres = ['Preparar material', 'Convocar familias', 'Registrar asistencia'];
+      for (const nombre of nombres) {
+        const res = await request(http()).post(`${base()}/actividades/${continuaId}/tareas`).set(bearer('tecnico'))
+          .send({ nombre, responsableId: tecnicoId, fechaLimite: '2026-12-01' }).expect(201);
+        expect(res.body).toMatchObject({ nombre, actividadId: continuaId, responsableId: tecnicoId, fechaLimite: '2026-12-01', estado: 'PENDIENTE', cerradoAt: null });
+      }
+      const res = await request(http()).get(`${base()}/marco-logico`).set(bearer('tecnico')).expect(200);
+      const a = res.body.resultados[0].actividades.find((x: { id: string }) => x.id === continuaId);
+      expect(a.tareas.filter((t: { nombre: string }) => nombres.includes(t.nombre))).toHaveLength(3);
+    });
+
+    it('no permite tareas huérfanas, vacías ni con responsable ajeno al equipo', async () => {
+      await request(http()).post(`${base()}/actividades/00000000-0000-4000-8000-000000000001/tareas`)
+        .set(bearer('admin')).send({ nombre: 'Huérfana' }).expect(404);
+      await request(http()).post(`${base()}/actividades/${continuaId}/tareas`).set(bearer('admin')).send({ nombre: '   ' }).expect(400);
+      const [{ id: supervisorId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'supervisor@serfamilia.test'`);
+      await request(http()).post(`${base()}/actividades/${continuaId}/tareas`).set(bearer('admin'))
+        .send({ nombre: 'Inválida', responsableId: supervisorId }).expect(422);
+    });
+
+    it('el técnico asignado a una tarea puede cerrarla, sin poder registrar avance de la actividad ajena', async () => {
+      expect(tokens.otro).toBeTruthy();
+      const [{ id: otroId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'marco.huanca@serfamilia.test'`);
+      const res = await request(http()).post(`${base()}/actividades/${continuaId}/tareas`).set(bearer('admin'))
+        .send({ nombre: 'Tarea delegada', responsableId: otroId }).expect(201);
+      const cerrada = await request(http()).patch(`${base()}/tareas/${res.body.id}`).set(bearer('otro'))
+        .send({ estado: 'COMPLETADA' }).expect(200);
+      expect(cerrada.body.cerradoAt).toBeTruthy();
+      const repetida = await request(http()).patch(`${base()}/tareas/${res.body.id}`).set(bearer('otro'))
+        .send({ estado: 'COMPLETADA' }).expect(200);
+      expect(repetida.body.cerradoAt).toBe(cerrada.body.cerradoAt);
+      await request(http()).patch(`${base()}/tareas/${tareaId}`).set(bearer('otro')).send({ estado: 'COMPLETADA' }).expect(403);
+      await request(http()).patch(`${base()}/actividades/${continuaId}/estado`).set(bearer('otro')).send({ estado: 'COMPLETADA' }).expect(403);
+    });
+  });
+
   describe('Permisos y reglas del proyecto', () => {
     it('un resultado con actividades no se puede eliminar (409)', async () => {
       await request(http()).delete(`${base()}/resultados/${resultadoId}`).set(bearer('admin')).expect(409);

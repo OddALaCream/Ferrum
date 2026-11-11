@@ -46,7 +46,9 @@ export class EquipoService {
       order: { asignadoAt: 'ASC' },
     });
 
-    return filas.map((f) => this.aDto(f));
+    return filas
+      .filter((f) => f.usuario && f.usuario.activo && !f.usuario.deletedAt && f.usuario.rol === RolUsuario.TECNICO)
+      .map((f) => this.aDto(f));
   }
 
   async buscarDisponibles(proyectoId: string, q = ''): Promise<TecnicoDisponibleDto[]> {
