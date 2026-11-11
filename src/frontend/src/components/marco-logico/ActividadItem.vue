@@ -329,6 +329,7 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
         v-model:visible="dialogoTarea"
         :proyecto-id="proyectoId"
         :actividad-id="actividad.id"
+        :fecha-fin-actividad="actividad.fechaFin"
         :equipo="equipo"
         :tarea="tareaSeleccionada"
         @guardado="emit('cambio')"

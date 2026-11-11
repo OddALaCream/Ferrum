@@ -29,7 +29,7 @@ export class TareasService {
     await this.proyectoEditable(proyectoId);
     const a = await this.actividadesService.actividad(proyectoId, actividadId);
     this.verificarPermiso(usuario, a);
-    if (dto.fechaLimite && !esFechaValida(dto.fechaLimite)) throw new UnprocessableEntityException('La fecha límite no es válida.');
+    this.validarFechaLimite(dto.fechaLimite, a);
     if (dto.responsableId) await this.validarResponsable(proyectoId, dto.responsableId);
     return this.tareas.save(this.tareas.create({ ...dto, actividadId }));
   }
@@ -38,7 +38,7 @@ export class TareasService {
     await this.proyectoEditable(proyectoId);
     const { tarea, actividad } = await this.tarea(proyectoId, tareaId);
     this.verificarPermiso(usuario, actividad, tarea);
-    if (dto.fechaLimite && !esFechaValida(dto.fechaLimite)) throw new UnprocessableEntityException('La fecha límite no es válida.');
+    this.validarFechaLimite(dto.fechaLimite === undefined ? tarea.fechaLimite : dto.fechaLimite, actividad);
     if (dto.responsableId) await this.validarResponsable(proyectoId, dto.responsableId);
 
     Object.assign(tarea, dto);
@@ -51,6 +51,14 @@ export class TareasService {
     const { tarea, actividad } = await this.tarea(proyectoId, tareaId);
     this.verificarPermiso(usuario, actividad);
     await this.tareas.delete(tarea.id);
+  }
+
+  private validarFechaLimite(fecha: string | null | undefined, actividad: Actividad): void {
+    if (fecha === undefined || fecha === null) return;
+    if (!esFechaValida(fecha)) throw new UnprocessableEntityException('La fecha límite no es válida.');
+    if (fecha > actividad.fechaFin) {
+      throw new UnprocessableEntityException(`La fecha límite de la tarea no puede superar la fecha de fin de la actividad (${actividad.fechaFin}).`);
+    }
   }
 
   private verificarPermiso(usuario: UsuarioAutenticado, a: Actividad, tarea?: Tarea): void {
