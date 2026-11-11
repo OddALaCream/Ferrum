@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
+import { ProyectoEquipo } from '../../proyectos/entities/proyecto-equipo.entity';
+import { RolUsuario } from '../../proyectos/entities/usuario.entity';
 import { Proyecto } from '../../proyectos/entities/proyecto.entity';
 import { CrearIndicadorDto, EditarIndicadorDto } from '../dto/indicador.dto';
 import { CrearResultadoDto, EditarResultadoDto } from '../dto/resultado.dto';
@@ -23,6 +25,7 @@ export class MarcoLogicoService {
     @InjectRepository(Proyecto) private readonly proyectos: Repository<Proyecto>,
     @InjectRepository(Resultado) private readonly resultados: Repository<Resultado>,
     @InjectRepository(Iov) private readonly indicadores: Repository<Iov>,
+    @InjectRepository(ProyectoEquipo) private readonly equipo: Repository<ProyectoEquipo>,
   ) {}
 
   /** Marco lógico completo: resultados → indicadores y actividades (con sesiones y tareas). */
@@ -92,6 +95,7 @@ export class MarcoLogicoService {
   async crearIndicador(proyectoId: string, resultadoId: string, dto: CrearIndicadorDto): Promise<Iov> {
     await this.proyectoEditable(proyectoId);
     await this.resultado(proyectoId, resultadoId);
+    if (dto.responsableId) await this.validarResponsable(proyectoId, dto.responsableId);
     const lineaBase = dto.lineaBase ?? 0;
     this.validarMeta(lineaBase, dto.meta);
     await this.validarPeso(resultadoId, dto.peso ?? 0);
@@ -107,6 +111,7 @@ export class MarcoLogicoService {
     await this.proyectoEditable(proyectoId);
     await this.resultado(proyectoId, resultadoId);
     const i = await this.indicador(resultadoId, indicadorId);
+    if (dto.responsableId) await this.validarResponsable(proyectoId, dto.responsableId);
     Object.assign(i, dto);
     this.validarMeta(i.lineaBase, i.meta);
     if (dto.peso !== undefined) await this.validarPeso(resultadoId, dto.peso, i.id);
@@ -145,6 +150,16 @@ export class MarcoLogicoService {
     const suma = otros.filter((o) => o.id !== exceptoId).reduce((s, o) => s + o.peso, 0) + peso;
     if (suma > 100.0001) {
       throw new UnprocessableEntityException(`La suma de pesos de los indicadores del resultado no puede superar 100 % (quedaría en ${suma}).`);
+    }
+  }
+
+  private async validarResponsable(proyectoId: string, usuarioId: string): Promise<void> {
+    const miembro = await this.equipo.findOne({
+      where: { proyectoId, usuarioId, retiradoAt: IsNull() },
+      relations: { usuario: true },
+    });
+    if (!miembro?.usuario || miembro.usuario.rol !== RolUsuario.TECNICO || !miembro.usuario.activo || miembro.usuario.deletedAt) {
+      throw new UnprocessableEntityException('El responsable debe ser un técnico activo del equipo del proyecto.');
     }
   }
 

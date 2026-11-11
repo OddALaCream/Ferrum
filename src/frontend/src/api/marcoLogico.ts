@@ -47,6 +47,7 @@ export interface Actividad {
 }
 
 export interface Indicador {
+  responsableId?: string | null;
   id: string;
   resultadoId: string;
   codigo: string;
@@ -82,6 +83,7 @@ export interface NuevoResultado {
 }
 
 export interface NuevoIndicador {
+  responsableId?: string;
   codigo: string;
   descripcion: string;
   unidad: string;
@@ -166,5 +168,16 @@ export async function crearTarea(
 
 export async function cambiarEstadoTarea(proyectoId: string, tareaId: string, estado: EstadoTarea): Promise<Tarea> {
   const { data } = await http.patch<Tarea>(`${base(proyectoId)}/tareas/${tareaId}`, { estado });
+  return data;
+}
+export interface DatosTarea {
+  /** Descripción breve de lo que hay que hacer. */
+  nombre: string;
+  responsableId?: string | null;
+  fechaLimite?: string | null;
+}
+
+export async function editarTarea(proyectoId: string, tareaId: string, dto: Partial<DatosTarea> & { estado?: EstadoTarea }): Promise<Tarea> {
+  const { data } = await http.patch<Tarea>(`${base(proyectoId)}/tareas/${tareaId}`, dto);
   return data;
 }

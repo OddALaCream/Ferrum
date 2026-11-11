@@ -50,6 +50,14 @@ cd src/backend && npm install && npm run migration:run && npm run seed:dev && np
 cd src/frontend && npm install && npm run dev
 ```
 
+## Actividades y tareas (SGP-81 y SGP-111)
+
+En el marco lógico de un proyecto, el Administrador registra actividades bajo cada resultado, con su meta, fechas y Técnico responsable del equipo activo. El módulo **Cronograma y Actividades** muestra esas fechas y permite consultar y actualizar las tareas dentro de cada actividad. Las tareas incluyen una descripción breve (`nombre` en la API), responsable, fecha límite, estado y fecha de cierre automática. El Administrador y el responsable de la actividad gestionan las tareas; el Técnico al que se delega una tarea también puede actualizarla. Los proyectos cerrados quedan en solo lectura.
+
+Antes de iniciar la API, ejecutar `npm run migration:run` en `src/backend`. La migración `MarcoLogicoSprint2` adapta el esquema inicial al modelo ya utilizado por la aplicación: conserva las fechas y resultados existentes, incorpora las sesiones y cambia los nombres de rol `DIRECTOR` → `ADMINISTRADOR` y `ADMINISTRATIVO` → `SUPERVISOR`. Conservar una copia de seguridad antes de aplicarla sobre datos existentes; su reversión requiere restaurarla. Si hay códigos de resultado repetidos dentro de un proyecto, deben resolverse antes de crear el índice único. `npm run seed:dev` carga los usuarios y datos de desarrollo con contraseña `Serfamilia2026`, sin reemplazar cuentas existentes.
+
+Verificación: `npm test`, `npm run lint` y `npm run build` en ambos paquetes; `npm run test:e2e -- --runInBand marco-logico` en el backend con una base de pruebas migrada y los datos de desarrollo cargados.
+
 ## Convenciones de trabajo
 
 Las ramas de trabajo siguen la forma `feature/<nombre-feature>` y parten de una versión actualizada de `main`.

@@ -172,6 +172,31 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
     expect(api.cambiarEstadoTarea).toHaveBeenCalledWith('p-1', 't-1', 'COMPLETADA');
   });
 
+  it('CP-24: lista tres tareas con su descripción, estado y responsable', async () => {
+    const datos = arbol();
+    datos.resultados[0].actividades[0].tareas = ['Preparar material', 'Convocar familias', 'Registrar asistencia'].map((nombre, i) => ({
+      id: `t-${i}`, actividadId: 'a-1', nombre, responsableId: YO, estado: 'PENDIENTE', fechaLimite: '2026-12-01', cerradoAt: null,
+    }));
+    api.obtenerMarcoLogico.mockResolvedValue(datos);
+    const w = await montar('tecnico');
+    const a = w.get('[data-test="actividad-A.1.1"]');
+    expect(a.findAll('[data-test="tarea-estado"]').map((t) => t.text())).toEqual(['Pendiente', 'Pendiente', 'Pendiente']);
+    expect(a.findAll('[data-test="tarea-responsable"]').map((t) => t.text())).toEqual(['Lucía Condori', 'Lucía Condori', 'Lucía Condori']);
+    expect(a.text()).toContain('Registrar asistencia');
+  });
+
+  it('el responsable de una tarea delegada puede cerrarla sin operar sobre la actividad ajena', async () => {
+    const datos = arbol();
+    datos.resultados[0].actividades[1].tareas = [{ id: 'delegada', actividadId: 'a-2', nombre: 'Encuesta', responsableId: YO, estado: 'PENDIENTE', fechaLimite: null, cerradoAt: null }];
+    api.obtenerMarcoLogico.mockResolvedValue(datos);
+    const w = await montar('tecnico');
+    const a = w.get('[data-test="actividad-A.1.3"]');
+    expect(a.get('[data-test="sesion"]').attributes('disabled')).toBeDefined();
+    await a.get('[data-test="tarea-toggle"]').trigger('click');
+    await flushPromises();
+    expect(api.cambiarEstadoTarea).toHaveBeenCalledWith('p-1', 'delegada', 'COMPLETADA');
+  });
+
   it('un proyecto cerrado queda en solo lectura (RN-09)', async () => {
     api.obtenerMarcoLogico.mockResolvedValue(arbol('CERRADO'));
     const wrapper = await montar('administrador');

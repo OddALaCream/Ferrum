@@ -289,6 +289,7 @@ watch(() => props.id, () => cargar(), { immediate: true });
         :resultado-id="seleccionado?.id ?? null"
         :resultado-codigo="seleccionado?.codigo ?? ''"
         :sugerencia="siguienteIndicador"
+        :equipo="equipo"
         @guardado="recargar"
       />
       <ActividadDialog

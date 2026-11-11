@@ -207,7 +207,7 @@ export class ActividadesService {
       where: { proyectoId, usuarioId, retiradoAt: IsNull() },
       relations: { usuario: true },
     });
-    if (!miembro || miembro.usuario.rol !== RolUsuario.TECNICO || !miembro.usuario.activo) {
+    if (!miembro?.usuario || miembro.usuario.rol !== RolUsuario.TECNICO || !miembro.usuario.activo || miembro.usuario.deletedAt) {
       throw new UnprocessableEntityException('El responsable debe ser un técnico activo del equipo del proyecto.');
     }
   }

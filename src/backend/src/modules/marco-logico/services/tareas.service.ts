@@ -13,7 +13,7 @@ import { ActividadesService } from './actividades.service';
 
 /**
  * RF-24: tareas en que se subdivide una actividad ("hablar con los jefes de manzana", "hacer encuestas"…).
- * Las crea el Administrador o el técnico responsable de la actividad; también ellos las actualizan.
+ * Las crea el Administrador o el técnico responsable de la actividad. El responsable de la tarea también puede actualizarla.
  */
 @Injectable()
 export class TareasService {
@@ -37,7 +37,7 @@ export class TareasService {
   async editar(proyectoId: string, tareaId: string, dto: EditarTareaDto, usuario: UsuarioAutenticado): Promise<Tarea> {
     await this.proyectoEditable(proyectoId);
     const { tarea, actividad } = await this.tarea(proyectoId, tareaId);
-    this.verificarPermiso(usuario, actividad);
+    this.verificarPermiso(usuario, actividad, tarea);
     if (dto.fechaLimite && !esFechaValida(dto.fechaLimite)) throw new UnprocessableEntityException('La fecha límite no es válida.');
     if (dto.responsableId) await this.validarResponsable(proyectoId, dto.responsableId);
 
@@ -53,11 +53,11 @@ export class TareasService {
     await this.tareas.delete(tarea.id);
   }
 
-  private verificarPermiso(usuario: UsuarioAutenticado, a: Actividad): void {
+  private verificarPermiso(usuario: UsuarioAutenticado, a: Actividad, tarea?: Tarea): void {
     const esAdmin = usuario.rol === RolUsuario.ADMINISTRADOR;
-    const esResponsable = usuario.rol === RolUsuario.TECNICO && a.responsableId === usuario.id;
+    const esResponsable = usuario.rol === RolUsuario.TECNICO && (a.responsableId === usuario.id || tarea?.responsableId === usuario.id);
     if (!esAdmin && !esResponsable) {
-      throw new ForbiddenException('Solo el Administrador o el técnico responsable de la actividad puede gestionar sus tareas.');
+      throw new ForbiddenException('Solo el Administrador o el técnico responsable de la actividad o tarea puede actualizarla.');
     }
   }
 
@@ -66,7 +66,7 @@ export class TareasService {
       where: { proyectoId, usuarioId, retiradoAt: IsNull() },
       relations: { usuario: true },
     });
-    if (!miembro || miembro.usuario.rol !== RolUsuario.TECNICO || !miembro.usuario.activo) {
+    if (!miembro?.usuario || miembro.usuario.rol !== RolUsuario.TECNICO || !miembro.usuario.activo || miembro.usuario.deletedAt) {
       throw new UnprocessableEntityException('El responsable debe ser un técnico activo del equipo del proyecto.');
     }
   }
