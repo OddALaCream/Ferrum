@@ -18,7 +18,7 @@ import { ActividadSesion } from '../entities/actividad-sesion.entity';
 import { Iov } from '../entities/iov.entity';
 import { Resultado } from '../entities/resultado.entity';
 import { codigoPg, esViolacionFk } from '../utils/errores-pg';
-import { esFechaValida } from '../utils/estado-efectivo';
+import { esFechaValida, estadoSinRetraso, hoyIso } from '../utils/estado-efectivo';
 
 const MSG_DUPLICADA = 'Ya existe una actividad con ese código en el resultado.';
 
@@ -79,6 +79,8 @@ export class ActividadesService {
       const existentes = await this.sesiones.find({ where: { actividadId } });
       this.validarSesiones(existentes.map((s) => s.fecha), a.fechaInicio, a.fechaFin);
     }
+    // Si se amplió el plazo de una actividad que estaba retrasada, deja de estarlo
+    if (a.estado === 'RETRASADA' && a.fechaFin >= hoyIso()) a.estado = estadoSinRetraso(a.cumplimientoPct);
     try {
       return await this.actividades.save(a);
     } catch (e) {
@@ -162,15 +164,29 @@ export class ActividadesService {
 
     a.estado = estado;
     a.cumplimientoPct = pct;
+    // CP-13: fechas reales. Empieza al ponerla en curso; se cierra al completarla; si se reabre, pierde el cierre.
+    const hoy = hoyIso();
+    if (estado === 'PENDIENTE') {
+      a.fechaRealInicio = null;
+      a.fechaRealFin = null;
+    } else {
+      a.fechaRealInicio = a.fechaRealInicio ?? hoy;
+      a.fechaRealFin = estado === 'COMPLETADA' ? (a.fechaRealFin ?? hoy) : null;
+    }
     return this.actividades.save(a);
   }
 
   /** Estado y % de una actividad discreta a partir de sus sesiones realizadas. */
   private async recalcular(a: Actividad): Promise<Actividad> {
     const todas = await this.sesiones.find({ where: { actividadId: a.id } });
-    const hechas = todas.filter((s) => s.realizada).length;
+    const realizadas = todas.filter((s) => s.realizada).map((s) => s.fecha).sort();
+    const hechas = realizadas.length;
+    const completa = todas.length > 0 && hechas === todas.length;
     a.cumplimientoPct = todas.length ? Math.round((hechas / todas.length) * 10000) / 100 : 0;
-    a.estado = todas.length > 0 && hechas === todas.length ? 'COMPLETADA' : hechas > 0 ? 'EN_CURSO' : 'PENDIENTE';
+    a.estado = completa ? 'COMPLETADA' : hechas > 0 ? 'EN_CURSO' : 'PENDIENTE';
+    // CP-13: empieza con la primera sesión realizada y se cierra con la última
+    a.fechaRealInicio = realizadas[0] ?? null;
+    a.fechaRealFin = completa ? realizadas[hechas - 1] : null;
     return this.actividades.save(a);
   }
 

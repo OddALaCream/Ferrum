@@ -11,7 +11,7 @@ import { Iov } from '../entities/iov.entity';
 import { Resultado } from '../entities/resultado.entity';
 import type { ArbolMarcoLogico, ResultadoVista } from '../types/marco-logico.types';
 import { codigoPg, esViolacionFk } from '../utils/errores-pg';
-import { compararCodigos, estadoEfectivo } from '../utils/estado-efectivo';
+import { compararCodigos, estadoEfectivo, hoyIso } from '../utils/estado-efectivo';
 
 const MSG_RESULTADO_DUPLICADO = 'Ya existe un resultado con ese código en el proyecto.';
 const MSG_INDICADOR_DUPLICADO = 'Ya existe un indicador con ese código en el resultado.';
@@ -52,7 +52,7 @@ export class MarcoLogicoService {
           .sort((a, b) => compararCodigos(a.codigo, b.codigo))
           .map((a) => ({
             ...a,
-            estadoEfectivo: estadoEfectivo(a.estado, a.fechaFin),
+            estadoEfectivo: estadoEfectivo(a.estado, a.fechaFin, hoyIso(), a.cumplimientoPct),
             sesiones: [...a.sesiones].sort((x, y) => x.fecha.localeCompare(y.fecha)),
             tareas: [...a.tareas].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime()),
           })),

@@ -68,6 +68,14 @@ export class Actividad {
   @Column({ name: 'cumplimiento_pct', type: 'numeric', precision: 5, scale: 2, default: 0, transformer: numerico })
   cumplimientoPct!: number;
 
+  /** Cuándo empezó de verdad: al pasar a En curso, o con la primera sesión realizada. */
+  @Column({ name: 'fecha_real_inicio', type: 'date', nullable: true })
+  fechaRealInicio!: string | null;
+
+  /** Fecha de cierre (CP-13): cuándo se completó. Se borra si la actividad se reabre. */
+  @Column({ name: 'fecha_real_fin', type: 'date', nullable: true })
+  fechaRealFin!: string | null;
+
   @OneToMany(() => ActividadSesion, (s) => s.actividad)
   sesiones!: ActividadSesion[];
 

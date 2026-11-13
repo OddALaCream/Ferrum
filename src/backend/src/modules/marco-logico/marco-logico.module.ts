@@ -14,12 +14,13 @@ import { Resultado } from './entities/resultado.entity';
 import { Tarea } from './entities/tarea.entity';
 import { ActividadesService } from './services/actividades.service';
 import { MarcoLogicoService } from './services/marco-logico.service';
+import { ProcesoRetrasosService } from './services/proceso-retrasos.service';
 import { SeguimientoService } from './services/seguimiento.service';
 import { TareasService } from './services/tareas.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Proyecto, ProyectoEquipo, ProyectoSupervisor, Resultado, Iov, Actividad, ActividadSesion, Tarea])],
   controllers: [MarcoLogicoController, ActividadesController, TareasController, SeguimientoController],
-  providers: [MarcoLogicoService, ActividadesService, TareasService, SeguimientoService],
+  providers: [MarcoLogicoService, ActividadesService, TareasService, SeguimientoService, ProcesoRetrasosService],
 })
 export class MarcoLogicoModule {}

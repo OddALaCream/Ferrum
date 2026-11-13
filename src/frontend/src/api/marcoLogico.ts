@@ -42,6 +42,10 @@ export interface Actividad {
   unidadMeta: string | null;
   fuentesVerificacion: string | null;
   cumplimientoPct: number;
+  /** Cuándo empezó de verdad (al ponerla en curso o con la primera sesión realizada). */
+  fechaRealInicio?: string | null;
+  /** Fecha de cierre (CP-13): cuándo se completó. Se borra si se reabre. */
+  fechaRealFin?: string | null;
   sesiones: Sesion[];
   tareas: Tarea[];
 }

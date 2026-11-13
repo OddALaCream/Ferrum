@@ -18,7 +18,7 @@ export interface ActividadPendiente {
   codigo: string;
   nombre: string;
   tipoCronograma: 'CONTINUO' | 'DISCRETO';
-  estado: 'PENDIENTE' | 'EN_CURSO';
+  estado: 'PENDIENTE' | 'EN_CURSO' | 'RETRASADA';
   retrasada: boolean;
   fechaInicio: string;
   fechaFin: string;

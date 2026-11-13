@@ -247,6 +247,22 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
     }
   });
 
+  it('CP-13: una actividad completada muestra su fecha de cierre; una en curso, cuándo empezó', async () => {
+    const datos = arbol();
+    Object.assign(datos.resultados[0].actividades[0], {
+      estado: 'COMPLETADA', estadoEfectivo: 'COMPLETADA', cumplimientoPct: 100, fechaRealInicio: '2026-09-01', fechaRealFin: '2026-10-14',
+    });
+    Object.assign(datos.resultados[0].actividades[1], { fechaRealInicio: '2026-10-06', fechaRealFin: null });
+    api.obtenerMarcoLogico.mockResolvedValue(datos);
+    const wrapper = await montar('administrador');
+
+    const completada = wrapper.get('[data-test="actividad-A.1.1"]');
+    expect(completada.get('[data-test="fecha-cierre"]').text()).toContain('Completada el');
+    expect(completada.get('[data-test="fecha-cierre"]').text()).toContain('14');
+    expect(wrapper.get('[data-test="actividad-A.1.3"] [data-test="fecha-inicio-real"]').text()).toContain('Empezó el');
+    expect(wrapper.find('[data-test="actividad-A.1.4"] [data-test="fecha-cierre"]').exists()).toBe(false);
+  });
+
   it('un proyecto sin resultados lo explica', async () => {
     api.obtenerMarcoLogico.mockResolvedValue({ ...arbol(), resultados: [] });
     const wrapper = await montar('administrador');

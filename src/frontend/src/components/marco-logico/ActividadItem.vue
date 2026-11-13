@@ -154,6 +154,28 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
           {{ meta }}
         </dd>
       </div>
+      <div
+        v-if="actividad.fechaRealFin"
+        data-test="fecha-cierre"
+      >
+        <dt class="inline">
+          Completada el
+        </dt>
+        <dd class="inline font-medium text-green-700">
+          {{ formatoFecha(actividad.fechaRealFin) }}
+        </dd>
+      </div>
+      <div
+        v-else-if="actividad.fechaRealInicio"
+        data-test="fecha-inicio-real"
+      >
+        <dt class="inline">
+          Empezó el
+        </dt>
+        <dd class="inline text-slate-700">
+          {{ formatoFecha(actividad.fechaRealInicio) }}
+        </dd>
+      </div>
     </dl>
 
     <div class="mt-3 flex items-center gap-3">
@@ -217,7 +239,7 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
       class="mt-3 flex flex-wrap items-end gap-2"
     >
       <Button
-        v-if="actividad.estado === 'PENDIENTE'"
+        v-if="actividad.estado === 'PENDIENTE' || (actividad.estado === 'RETRASADA' && actividad.cumplimientoPct === 0)"
         label="Iniciar"
         icon="pi pi-play"
         size="small"
