@@ -16,6 +16,8 @@ export interface ProyectoResumen {
   cumplimientoPct: string;
   /** Técnicos con asignación vigente. */
   equipoActivo: number;
+  /** Nombres de quienes supervisan el proyecto, separados por coma (vacío si todavía no tiene). */
+  supervisores: string | null;
 }
 
 export interface ListaProyectos {
@@ -33,4 +35,17 @@ export interface ResumenCartera {
   presupuestoBob: string;
   /** Técnicos distintos con asignación vigente en esos proyectos. */
   tecnicosActivos: number;
+  /** Actividades de esos proyectos (el Técnico solo cuenta las suyas). */
+  actividades: ResumenActividades;
+  /** Promedio del avance de esas actividades (0 a 100), como texto. */
+  avancePromedio: string;
+}
+
+export interface ResumenActividades {
+  total: number;
+  completadas: number;
+  enCurso: number;
+  pendientes: number;
+  /** No completadas y con la fecha de fin ya vencida. */
+  retrasadas: number;
 }

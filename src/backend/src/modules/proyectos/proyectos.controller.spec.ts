@@ -4,6 +4,7 @@ import request from 'supertest';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ProblemDetailsFilter } from '../../common/filters/problem-details.filter';
 import { ProyectoEquipo } from './entities/proyecto-equipo.entity';
+import { ProyectoSupervisor } from './entities/proyecto-supervisor.entity';
 import { ProyectosController } from './proyectos.controller';
 import { ProyectosService } from './proyectos.service';
 
@@ -21,6 +22,7 @@ describe('PATCH /api/proyectos/:id/presupuesto', () => {
         { provide: ProyectosService, useValue: { registrarPresupuesto } },
         // Lo necesita el AlcanceProyectoGuard de GET /proyectos/:id
         { provide: getRepositoryToken(ProyectoEquipo), useValue: { exists: jest.fn() } },
+        { provide: getRepositoryToken(ProyectoSupervisor), useValue: { exists: jest.fn() } },
       ],
     }).compile();
     app = mod.createNestApplication();

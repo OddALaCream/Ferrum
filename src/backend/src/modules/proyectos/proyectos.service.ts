@@ -89,11 +89,17 @@ export class ProyectosService {
            WHERE r.proyecto_id = p.id)`,
         'avance',
       )
+      .addSelect(
+        `(SELECT string_agg(u.nombre, ', ' ORDER BY u.nombre)
+            FROM proyecto_supervisores ps JOIN usuarios u ON u.id = ps.usuario_id
+           WHERE ps.proyecto_id = p.id AND ps.retirado_at IS NULL)`,
+        'supervisores',
+      )
       .orderBy('p.fecha_inicio', 'DESC')
       .addOrderBy('p.codigo', 'ASC')
       .offset((page - 1) * limit)
       .limit(limit)
-      .getRawAndEntities<{ equipo_activo: string; avance: string }>();
+      .getRawAndEntities<{ equipo_activo: string; avance: string; supervisores: string | null }>();
 
     const items: ProyectoResumen[] = entities.map((p, i) => ({
       id: p.id,
@@ -106,6 +112,7 @@ export class ProyectosService {
       fechaFin: p.fechaFin,
       cumplimientoPct: String(raw[i]?.avance ?? '0'),
       equipoActivo: Number(raw[i]?.equipo_activo ?? 0),
+      supervisores: raw[i]?.supervisores ?? null,
     }));
     return { items, total, page, limit };
   }
@@ -133,17 +140,50 @@ export class ProyectosService {
       .innerJoin('proyecto_equipo', 'pe', 'pe.proyecto_id = p.id AND pe.retirado_at IS NULL')
       .getRawOne<{ total: string }>();
 
+    // Actividades de esos proyectos; el Técnico solo cuenta las que tiene a su cargo
+    const actividadesQb = this.consultaVisible(usuario)
+      .innerJoin('resultados', 'r', 'r.proyecto_id = p.id')
+      .innerJoin('actividades', 'a', 'a.resultado_id = r.id')
+      .select('COUNT(a.id)', 'total')
+      .addSelect(`COUNT(*) FILTER (WHERE a.estado = 'COMPLETADA')`, 'completadas')
+      .addSelect(`COUNT(*) FILTER (WHERE a.estado = 'EN_CURSO' AND a.fecha_fin >= CURRENT_DATE)`, 'en_curso')
+      .addSelect(`COUNT(*) FILTER (WHERE a.estado = 'PENDIENTE' AND a.fecha_fin >= CURRENT_DATE)`, 'pendientes')
+      .addSelect(`COUNT(*) FILTER (WHERE a.estado <> 'COMPLETADA' AND a.fecha_fin < CURRENT_DATE)`, 'retrasadas')
+      .addSelect('COALESCE(ROUND(AVG(a.cumplimiento_pct), 2), 0)', 'avance');
+    if (usuario.rol === RolUsuario.TECNICO) actividadesQb.andWhere('a.responsable_id = :responsableId', { responsableId: usuario.id });
+    const act = await actividadesQb.getRawOne<{
+      total: string; completadas: string; en_curso: string; pendientes: string; retrasadas: string; avance: string;
+    }>();
+
     return {
       totalProyectos,
       porEstado,
       presupuestoBob: normalizarMonto(presupuesto.toFixed(2)),
       tecnicosActivos: Number(tecnicos?.total ?? 0),
+      actividades: {
+        total: Number(act?.total ?? 0),
+        completadas: Number(act?.completadas ?? 0),
+        enCurso: Number(act?.en_curso ?? 0),
+        pendientes: Number(act?.pendientes ?? 0),
+        retrasadas: Number(act?.retrasadas ?? 0),
+      },
+      avancePromedio: String(act?.avance ?? '0'),
     };
   }
 
-  /** Proyectos que el usuario puede ver: todos, o solo los asignados si es Técnico. */
+  /**
+   * Proyectos que el usuario puede ver: el Administrador, todos; el Supervisor, los que supervisa;
+   * el Técnico, aquellos donde está asignado.
+   */
   private consultaVisible(usuario: UsuarioAutenticado): SelectQueryBuilder<Proyecto> {
     const qb = this.proyectos.createQueryBuilder('p');
+    if (usuario.rol === RolUsuario.SUPERVISOR) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM proyecto_supervisores ps
+                  WHERE ps.proyecto_id = p.id AND ps.usuario_id = :usuarioId AND ps.retirado_at IS NULL)`,
+        { usuarioId: usuario.id },
+      );
+    }
     if (usuario.rol === RolUsuario.TECNICO) {
       qb.andWhere(
         `EXISTS (SELECT 1 FROM proyecto_equipo pv
