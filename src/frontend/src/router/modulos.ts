@@ -17,7 +17,7 @@ export const MODULOS: readonly Modulo[] = [
     name: 'dashboard',
     path: 'dashboard',
     titulo: 'Dashboard',
-    descripcion: 'Resumen general del avance de los proyectos.',
+    descripcion: 'Tu resumen: cada perfil ve lo que le corresponde.',
     icono: 'pi pi-chart-bar',
     component: () => import('@/views/DashboardView.vue'),
   },
@@ -25,7 +25,7 @@ export const MODULOS: readonly Modulo[] = [
     name: 'proyectos',
     path: 'proyectos',
     titulo: 'Proyectos',
-    descripcion: 'Proyectos de la fundación, su equipo y su marco lógico.',
+    descripcion: 'Los proyectos que te corresponden, con su equipo y su marco lógico.',
     icono: 'pi pi-briefcase',
     component: () => import('@/views/Proyectos/ProyectosListView.vue'),
   },
@@ -35,7 +35,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Cronograma y Actividades',
     descripcion: 'Planificación y seguimiento de las actividades programadas.',
     icono: 'pi pi-calendar',
-    roles: ['tecnico', 'administrador'],
+    roles: ['tecnico', 'supervisor', 'administrador'],
     component: () => import('@/views/CronogramaView.vue'),
   },
   {
@@ -44,7 +44,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Finanzas y Desembolsos',
     descripcion: 'Control presupuestario y registro de desembolsos.',
     icono: 'pi pi-dollar',
-    roles: ['supervisor', 'administrador'],
+    roles: ['administrador'],
     component: () => import('@/views/DesembolsosView.vue'),
   },
   {
@@ -53,6 +53,7 @@ export const MODULOS: readonly Modulo[] = [
     titulo: 'Reportes',
     descripcion: 'Generación y descarga de informes del proyecto.',
     icono: 'pi pi-file-pdf',
+    roles: ['supervisor', 'administrador'],
     component: () => import('@/views/ReportesView.vue'),
   },
   {

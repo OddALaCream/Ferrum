@@ -49,6 +49,12 @@ vi.mock('@/api/proyectos', async (importOriginal) => {
     actualizarEstado,
   };
 });
+vi.mock('@/api/supervisores', () => ({
+  obtenerSupervisores: vi.fn().mockResolvedValue([]),
+  buscarSupervisoresDisponibles: vi.fn().mockResolvedValue([]),
+  asignarSupervisor: vi.fn(),
+  retirarSupervisor: vi.fn(),
+}));
 vi.mock('@/api/equipo', () => ({
   obtenerEquipo,
   asignarTecnico,

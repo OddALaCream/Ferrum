@@ -199,6 +199,18 @@ const avance = (p: ProyectoResumen) => Number(p.cumplimientoPct) || 0;
           </div>
         </template>
       </Column>
+      <Column header="Supervisión">
+        <template #body="{ data }">
+          <span
+            v-if="data.supervisores"
+            class="text-sm text-slate-600"
+          >{{ data.supervisores }}</span>
+          <span
+            v-else
+            class="text-sm italic text-slate-400"
+          >Sin supervisor</span>
+        </template>
+      </Column>
       <Column header="Equipo">
         <template #body="{ data }">
           <span class="text-sm text-slate-600"><i class="pi pi-users mr-1 text-xs text-slate-400" />{{ data.equipoActivo }}</span>

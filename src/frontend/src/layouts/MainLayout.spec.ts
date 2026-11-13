@@ -35,12 +35,24 @@ describe('MainLayout', () => {
     expect(await montarComo('administrador')).toEqual(TODOS);
   });
 
-  it('al técnico le oculta Desembolsos, Usuarios y Bitácora', async () => {
-    expect(await montarComo('tecnico')).toEqual(['dashboard', 'proyectos', 'cronograma', 'reportes']);
+  it('al técnico solo le muestra lo que necesita para cumplir: Dashboard, Proyectos y Cronograma', async () => {
+    expect(await montarComo('tecnico')).toEqual(['dashboard', 'proyectos', 'cronograma']);
   });
 
-  it('al supervisor le oculta Cronograma, Usuarios y Bitácora', async () => {
-    expect(await montarComo('supervisor')).toEqual(['dashboard', 'proyectos', 'desembolsos', 'reportes']);
+  it('al supervisor le muestra Dashboard, Proyectos, Cronograma y Reportes; sin Finanzas, Usuarios ni Bitácora', async () => {
+    expect(await montarComo('supervisor')).toEqual(['dashboard', 'proyectos', 'cronograma', 'reportes']);
+  });
+
+  it('Finanzas es solo del Administrador: el Supervisor no entra ni por URL', async () => {
+    await montarComo('supervisor');
+    await router.push('/desembolsos');
+    expect(router.currentRoute.value.name).toBe('dashboard');
+  });
+
+  it('Reportes es del Administrador y el Supervisor: el Técnico no entra ni por URL', async () => {
+    await montarComo('tecnico');
+    await router.push('/reportes');
+    expect(router.currentRoute.value.name).toBe('dashboard');
   });
 
   it('la Bitácora solo la ve el Administrador y se bloquea por URL para los demás', async () => {

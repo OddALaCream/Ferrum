@@ -16,5 +16,6 @@ export async function borrarProyectosDePrueba(ds: DataSource, prefijo: string): 
   await ds.query(`DELETE FROM iov WHERE resultado_id IN (${deResultados})`, [ids]);
   await ds.query(`DELETE FROM resultados WHERE proyecto_id = ANY($1)`, [ids]);
   await ds.query(`DELETE FROM proyecto_equipo WHERE proyecto_id = ANY($1)`, [ids]);
+  await ds.query(`DELETE FROM proyecto_supervisores WHERE proyecto_id = ANY($1)`, [ids]);
   await ds.query(`DELETE FROM proyectos WHERE id = ANY($1)`, [ids]);
 }

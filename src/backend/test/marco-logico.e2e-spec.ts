@@ -59,6 +59,9 @@ describe('Marco lógico (e2e, RF-05 a RF-15, RF-24, RF-25)', () => {
         .expect(201)
     ).body.id;
     await request(http()).post(`${base()}/equipo`).set(bearer('admin')).send({ usuarioId: tecnicoId }).expect(201);
+    // El Supervisor solo consulta el marco lógico de los proyectos que supervisa
+    const [{ id: supervisorId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'supervisor@serfamilia.test'`);
+    await request(http()).post(`${base()}/supervisores`).set(bearer('admin')).send({ usuarioId: supervisorId }).expect(201);
   });
 
   afterAll(async () => {

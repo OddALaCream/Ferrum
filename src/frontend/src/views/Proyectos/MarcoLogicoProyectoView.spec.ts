@@ -36,6 +36,7 @@ function actividad(c: Partial<Actividad>): Actividad {
 
 function arbol(estado = 'EN_EJECUCION'): ArbolMarcoLogico {
   return {
+    alcance: 'COMPLETO',
     proyecto: { id: 'p-1', codigo: 'PRY-AGRO-2026', nombre: 'Producción agroecológica', estado, fechaInicio: '2026-09-01', fechaFin: '2027-03-31' },
     resultados: [
       {
@@ -227,6 +228,23 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
     expect(wrapper.text()).toContain('solo lectura');
     expect(wrapper.find('[data-test="nuevo-resultado"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="completar"]').exists()).toBe(false);
+  });
+
+  it('el Técnico recibe solo sus actividades y se lo dice, con "Mi avance"', async () => {
+    api.obtenerMarcoLogico.mockResolvedValue({ ...arbol(), alcance: 'MIS_ACTIVIDADES' });
+    const wrapper = await montar('tecnico');
+
+    expect(wrapper.get('[data-test="solo-mias"]').text()).toContain('solo las actividades que tienes a tu cargo');
+    expect(wrapper.text()).toContain('Mi avance');
+    expect(wrapper.text()).not.toContain('Avance general');
+  });
+
+  it('el Administrador y el Supervisor ven el marco lógico completo, sin ese aviso', async () => {
+    for (const rol of ['administrador', 'supervisor'] as const) {
+      const wrapper = await montar(rol);
+      expect(wrapper.find('[data-test="solo-mias"]').exists()).toBe(false);
+      expect(wrapper.text()).toContain('Avance general');
+    }
   });
 
   it('un proyecto sin resultados lo explica', async () => {

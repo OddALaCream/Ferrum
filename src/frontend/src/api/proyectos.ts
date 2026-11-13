@@ -94,6 +94,8 @@ export interface ProyectoResumen {
   cumplimientoPct: string | number;
   /** Técnicos con asignación vigente. */
   equipoActivo: number;
+  /** Quienes supervisan el proyecto, separados por coma; null si todavía no tiene. */
+  supervisores: string | null;
 }
 
 export interface ListaProyectos {
@@ -116,6 +118,10 @@ export interface ResumenCartera {
   porEstado: Record<EstadoProyecto, number>;
   presupuestoBob: string;
   tecnicosActivos: number;
+  /** Actividades de esos proyectos (el Técnico solo cuenta las suyas). */
+  actividades: { total: number; completadas: number; enCurso: number; pendientes: number; retrasadas: number };
+  /** Promedio del avance de esas actividades, 0 a 100 (llega como texto). */
+  avancePromedio: string;
 }
 
 /** RF-04: el Técnico solo recibe los proyectos donde está asignado. */

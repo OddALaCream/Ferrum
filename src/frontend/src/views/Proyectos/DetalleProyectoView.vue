@@ -26,6 +26,7 @@ import {
 } from '@/api/proyectos';
 import { useAuthStore } from '@/stores/auth';
 import { ESTADOS_PROYECTO, OPCIONES_ESTADO } from './estadoProyecto';
+import SupervisoresProyecto from '@/components/proyectos/SupervisoresProyecto.vue';
 import PresupuestoProyecto from './PresupuestoProyecto.vue';
 
 const props = defineProps<{ id: string }>();
@@ -532,6 +533,11 @@ watch(() => props.id, () => cargar(), { immediate: true });
           </Column>
         </DataTable>
       </section>
+
+      <SupervisoresProyecto
+        :proyecto-id="proyecto.id"
+        :editable="esAdministrador && !cerrado"
+      />
     </template>
   </div>
 </template>

@@ -81,8 +81,13 @@ describe('Control de acceso por rol (e2e, RF-18)', () => {
     await request(app.getHttpServer())[metodo](url).set(bearer(rol)).send({}).expect(403);
   });
 
-  it('CP-18: el Supervisor puede leer el proyecto (200)', async () => {
-    await request(app.getHttpServer()).get(`/api/proyectos/${proyectoId}`).set(bearer('supervisor')).expect(200);
+  it('CP-18: el Supervisor lee el proyecto solo si lo supervisa', async () => {
+    const server = app.getHttpServer();
+    await request(server).get(`/api/proyectos/${proyectoId}`).set(bearer('supervisor')).expect(403);
+
+    const [{ id: supervisorId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'supervisor@serfamilia.test'`);
+    await request(server).post(`/api/proyectos/${proyectoId}/supervisores`).set(bearer('admin')).send({ usuarioId: supervisorId }).expect(201);
+    await request(server).get(`/api/proyectos/${proyectoId}`).set(bearer('supervisor')).expect(200);
   });
 
   it('CP-23: el Técnico entra solo mientras está asignado; al retirarlo recibe 403', async () => {

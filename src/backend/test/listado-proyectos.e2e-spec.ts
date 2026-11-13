@@ -88,8 +88,16 @@ describe('Listado de proyectos e indicadores (e2e, RF-04)', () => {
     await listar('admin', { page: 0 }).expect(400);
   });
 
-  it('el Supervisor también ve el proyecto', async () => {
-    expect((await listar('supervisor', { q: codigo }).expect(200)).body.total).toBe(1);
+  it('el Supervisor ve el proyecto solo cuando lo supervisa', async () => {
+    const server = app.getHttpServer();
+    expect((await listar('supervisor', { q: codigo }).expect(200)).body.total).toBe(0);
+
+    const [{ id: supervisorId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'supervisor@serfamilia.test'`);
+    await request(server).post(`/api/proyectos/${proyectoId}/supervisores`).set(bearer('admin')).send({ usuarioId: supervisorId }).expect(201);
+
+    const res = await listar('supervisor', { q: codigo }).expect(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.items[0].supervisores).toBe('Rodrigo Mamani');
   });
 
   it('RN-10: el Técnico no ve el proyecto hasta que lo asignan, y deja de verlo al retirarlo', async () => {

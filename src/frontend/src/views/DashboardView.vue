@@ -1,40 +1,19 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
-import { computed, onMounted, ref } from 'vue';
-import { obtenerResumen, type EstadoProyecto, type ResumenCartera } from '@/api/proyectos';
+import { computed } from 'vue';
+import DashboardAdministrador from '@/components/dashboard/DashboardAdministrador.vue';
+import DashboardSupervisor from '@/components/dashboard/DashboardSupervisor.vue';
+import DashboardTecnico from '@/components/dashboard/DashboardTecnico.vue';
 import { useAuthStore } from '@/stores/auth';
-import { formatoMonto } from '@/utils/formato';
-import { ESTADOS_PROYECTO } from './Proyectos/estadoProyecto';
 
+/**
+ * Cada rol tiene su propio panel:
+ * - Administrador: toda la cartera, con el presupuesto.
+ * - Supervisor: sus proyectos y lo que se está atrasando.
+ * - Técnico: lo que le toca hacer.
+ */
 const auth = useAuthStore();
-
-const resumen = ref<ResumenCartera | null>(null);
-const fallo = ref(false);
-
 const esTecnico = computed(() => auth.role === 'tecnico');
-const BARRAS: Record<EstadoProyecto, string> = {
-  PLANIFICACION: 'bg-sky-500',
-  EN_EJECUCION: 'bg-green-500',
-  PAUSADO: 'bg-amber-500',
-  CERRADO: 'bg-slate-400',
-};
-const estados = computed(() =>
-  (Object.keys(ESTADOS_PROYECTO) as EstadoProyecto[]).map((e) => ({
-    clave: e,
-    ...ESTADOS_PROYECTO[e],
-    cantidad: resumen.value?.porEstado[e] ?? 0,
-    barra: BARRAS[e],
-  })),
-);
-const total = computed(() => resumen.value?.totalProyectos ?? 0);
-
-onMounted(async () => {
-  try {
-    resumen.value = await obtenerResumen();
-  } catch {
-    fallo.value = true;
-  }
-});
 </script>
 
 <template>
@@ -83,116 +62,8 @@ onMounted(async () => {
       </div>
     </section>
 
-    <p
-      v-if="fallo"
-      class="rounded-xl bg-white p-6 text-sm text-slate-500 shadow-sm ring-1 ring-slate-900/5"
-      data-test="fallo-indicadores"
-    >
-      No se pudieron cargar los indicadores. Recarga la página para intentarlo de nuevo.
-    </p>
-
-    <template v-else-if="resumen">
-      <section
-        class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-        aria-label="Indicadores de la cartera"
-      >
-        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
-          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
-            <i class="pi pi-briefcase text-base" aria-hidden="true" />
-          </span>
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {{ esTecnico ? 'Mis proyectos' : 'Proyectos' }}
-          </p>
-          <p
-            class="mt-2 text-3xl font-semibold text-slate-800"
-            data-test="kpi-total"
-          >
-            {{ resumen.totalProyectos }}
-          </p>
-        </div>
-        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
-          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-green-50 text-green-600">
-            <i class="pi pi-play-circle text-base" aria-hidden="true" />
-          </span>
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
-            En ejecución
-          </p>
-          <p
-            class="mt-2 text-3xl font-semibold text-green-700"
-            data-test="kpi-ejecucion"
-          >
-            {{ resumen.porEstado.EN_EJECUCION }}
-          </p>
-        </div>
-        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
-          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-            <i class="pi pi-dollar text-base" aria-hidden="true" />
-          </span>
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Presupuesto total
-          </p>
-          <p
-            class="mt-2 text-2xl font-semibold tabular-nums text-slate-800"
-            data-test="kpi-presupuesto"
-          >
-            {{ formatoMonto(resumen.presupuestoBob, 'BOB') }}
-          </p>
-        </div>
-        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
-          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-            <i class="pi pi-users text-base" aria-hidden="true" />
-          </span>
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Técnicos activos
-          </p>
-          <p
-            class="mt-2 text-3xl font-semibold text-slate-800"
-            data-test="kpi-tecnicos"
-          >
-            {{ resumen.tecnicosActivos }}
-          </p>
-        </div>
-      </section>
-
-      <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5">
-        <h3 class="text-sm font-semibold text-slate-700">
-          Proyectos por estado
-        </h3>
-        <p
-          v-if="total === 0"
-          class="mt-3 text-sm text-slate-500"
-          data-test="sin-proyectos"
-        >
-          {{ esTecnico ? 'Todavía no te asignaron a ningún proyecto.' : 'Todavía no hay proyectos registrados.' }}
-        </p>
-        <ul
-          v-else
-          class="mt-4 space-y-3"
-        >
-          <li
-            v-for="e in estados"
-            :key="e.clave"
-          >
-            <div class="mb-1 flex items-center justify-between text-sm">
-              <span class="flex items-center gap-2 text-slate-600"><i :class="[e.icono, 'text-xs text-slate-400']" />{{ e.label }}</span>
-              <span class="font-medium tabular-nums text-slate-800">{{ e.cantidad }}</span>
-            </div>
-            <div
-              class="h-2 overflow-hidden rounded-full bg-slate-100"
-              role="progressbar"
-              :aria-label="`${e.label}: ${e.cantidad} de ${total}`"
-              :aria-valuenow="e.cantidad"
-              aria-valuemin="0"
-              :aria-valuemax="total"
-            >
-              <div
-                :class="['h-full rounded-full', e.barra]"
-                :style="{ width: `${(e.cantidad / total) * 100}%` }"
-              />
-            </div>
-          </li>
-        </ul>
-      </section>
-    </template>
+    <DashboardAdministrador v-if="auth.role === 'administrador'" />
+    <DashboardSupervisor v-else-if="auth.role === 'supervisor'" />
+    <DashboardTecnico v-else-if="esTecnico" />
   </div>
 </template>

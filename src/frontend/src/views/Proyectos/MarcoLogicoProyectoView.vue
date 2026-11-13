@@ -41,6 +41,8 @@ const dialogoActividad = ref(false);
 const seleccionado = ref<Resultado | null>(null);
 
 const esAdministrador = computed(() => auth.role === 'administrador');
+/** El Técnico solo recibe las actividades que tiene a su cargo. */
+const soloMias = computed(() => arbol.value?.alcance === 'MIS_ACTIVIDADES');
 const cerrado = computed(() => arbol.value?.proyecto.estado === 'CERRADO');
 const puedeEditar = computed(() => esAdministrador.value && !cerrado.value);
 const estado = computed(() => (arbol.value ? ESTADOS_PROYECTO[arbol.value.proyecto.estado as EstadoProyecto] : null));
@@ -241,7 +243,7 @@ watch(() => props.id, () => cargar(), { immediate: true });
           </div>
           <div class="col-span-2 rounded-lg bg-slate-50 p-3 sm:col-span-1 lg:col-span-1">
             <dt class="text-xs text-slate-500">
-              Avance general
+              {{ soloMias ? 'Mi avance' : 'Avance general' }}
             </dt>
             <dd class="mt-1">
               <span class="text-xl font-semibold text-slate-800">{{ Math.round(totales.avance) }}%</span>
@@ -254,6 +256,13 @@ watch(() => props.id, () => cargar(), { immediate: true });
           </div>
         </dl>
 
+        <p
+          v-if="soloMias"
+          class="mt-4 flex items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800"
+          data-test="solo-mias"
+        >
+          <i class="pi pi-user text-xs" /> Ves solo las actividades que tienes a tu cargo en este proyecto.
+        </p>
         <p
           v-if="cerrado"
           class="mt-4 flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600"

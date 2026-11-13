@@ -23,6 +23,7 @@ const proyecto = (cambios: Partial<ProyectoResumen> = {}): ProyectoResumen => ({
   fechaFin: '2027-03-31',
   cumplimientoPct: '35.50',
   equipoActivo: 3,
+  supervisores: 'Rodrigo Mamani',
   ...cambios,
 });
 
@@ -57,6 +58,17 @@ describe('ProyectosListView (RF-04)', () => {
     expect(texto).toContain('En ejecución');
     expect(texto).toContain('1.850.000,00');
     expect(texto).toContain('36%');
+  });
+
+  it('muestra quién supervisa cada proyecto, y avisa cuando no tiene supervisor', async () => {
+    listarProyectos.mockResolvedValue({
+      items: [proyecto({ supervisores: 'Gabriela Choque Apaza, Rodrigo Mamani' }), proyecto({ id: 'p-2', codigo: 'PRY-2026-006', supervisores: null })],
+      total: 2, page: 1, limit: 10,
+    });
+    const texto = (await montar()).get('[data-test="tabla-proyectos"]').text();
+
+    expect(texto).toContain('Gabriela Choque Apaza, Rodrigo Mamani');
+    expect(texto).toContain('Sin supervisor');
   });
 
   it('la búsqueda pide la lista otra vez con el texto escrito', async () => {
