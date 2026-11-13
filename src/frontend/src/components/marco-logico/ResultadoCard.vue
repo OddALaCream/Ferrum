@@ -171,12 +171,16 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
           @click="emit('agregar-actividad')"
         />
       </div>
-      <p
+      <div
         v-if="resultado.actividades.length === 0"
-        class="rounded-lg bg-slate-50 p-3 text-sm text-slate-500"
+        class="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500"
+        data-test="sin-actividades"
       >
-        Este resultado todavía no tiene actividades.
-      </p>
+        <i class="pi pi-inbox text-base text-slate-400" aria-hidden="true" />
+        <p>
+          {{ esTecnico ? 'No tienes actividades ni tareas asignadas en este resultado.' : 'Este resultado todavía no tiene actividades.' }}
+        </p>
+      </div>
       <div class="space-y-3">
         <ActividadItem
           v-for="a in resultado.actividades"
