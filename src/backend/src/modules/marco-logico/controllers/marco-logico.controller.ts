@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { UsuarioActual } from '../../../common/decorators/usuario-actual.decorator';
+import type { UsuarioAutenticado } from '../../auth/types/auth.types';
 import { RolUsuario } from '../../proyectos/entities/usuario.entity';
 import { AlcanceProyecto } from '../../proyectos/guards/alcance-proyecto.guard';
 import { CrearIndicadorDto, EditarIndicadorDto } from '../dto/indicador.dto';
@@ -13,12 +15,12 @@ import { MarcoLogicoService } from '../services/marco-logico.service';
 export class MarcoLogicoController {
   constructor(private readonly marcoLogico: MarcoLogicoService) {}
 
-  /** Árbol completo: resultados → indicadores y actividades (con sesiones y tareas). El Técnico solo ve sus proyectos. */
+  /** Árbol: resultados → indicadores y actividades (con sesiones y tareas). El Técnico solo ve sus actividades. */
   @Roles(RolUsuario.ADMINISTRADOR, RolUsuario.SUPERVISOR, RolUsuario.TECNICO)
   @AlcanceProyecto('proyectoId')
   @Get('marco-logico')
-  arbol(@Param('proyectoId', ParseUUIDPipe) proyectoId: string) {
-    return this.marcoLogico.arbol(proyectoId);
+  arbol(@Param('proyectoId', ParseUUIDPipe) proyectoId: string, @UsuarioActual() usuario: UsuarioAutenticado) {
+    return this.marcoLogico.arbol(proyectoId, usuario);
   }
 
   @Roles(RolUsuario.ADMINISTRADOR)

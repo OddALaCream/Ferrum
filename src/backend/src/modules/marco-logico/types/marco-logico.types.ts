@@ -17,6 +17,11 @@ export interface ResultadoVista extends Omit<Resultado, 'indicadores' | 'activid
 }
 
 export interface ArbolMarcoLogico {
+  /**
+   * COMPLETO: todo el marco lógico (Administrador y Supervisor).
+   * MIS_ACTIVIDADES: el Técnico solo recibe los resultados y las actividades que tiene a su cargo.
+   */
+  alcance: 'COMPLETO' | 'MIS_ACTIVIDADES';
   proyecto: { id: string; codigo: string; nombre: string; estado: string; fechaInicio: string; fechaFin: string };
   resultados: ResultadoVista[];
 }

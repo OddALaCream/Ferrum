@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { ProyectoEquipo } from '../../proyectos/entities/proyecto-equipo.entity';
 import { RolUsuario } from '../../proyectos/entities/usuario.entity';
+import type { UsuarioAutenticado } from '../../auth/types/auth.types';
 import { Proyecto } from '../../proyectos/entities/proyecto.entity';
 import { CrearIndicadorDto, EditarIndicadorDto } from '../dto/indicador.dto';
 import { CrearResultadoDto, EditarResultadoDto } from '../dto/resultado.dto';
@@ -28,8 +29,12 @@ export class MarcoLogicoService {
     @InjectRepository(ProyectoEquipo) private readonly equipo: Repository<ProyectoEquipo>,
   ) {}
 
-  /** Marco lógico completo: resultados → indicadores y actividades (con sesiones y tareas). */
-  async arbol(proyectoId: string): Promise<ArbolMarcoLogico> {
+  /**
+   * Marco lógico: resultados → indicadores y actividades (con sesiones y tareas).
+   * El Técnico solo recibe los resultados y las actividades que tiene a su cargo.
+   */
+  async arbol(proyectoId: string, usuario?: UsuarioAutenticado): Promise<ArbolMarcoLogico> {
+    const soloMias = usuario?.rol === RolUsuario.TECNICO;
     const p = await this.proyecto(proyectoId);
     const resultados = await this.resultados.find({
       where: { proyectoId },
@@ -37,6 +42,8 @@ export class MarcoLogicoService {
     });
 
     const vista: ResultadoVista[] = resultados
+      .map((r) => (soloMias ? { ...r, actividades: r.actividades.filter((a) => a.responsableId === usuario.id) } : r))
+      .filter((r) => !soloMias || r.actividades.length > 0)
       .sort((a, b) => compararCodigos(a.codigo, b.codigo))
       .map((r) => ({
         ...r,
@@ -52,6 +59,7 @@ export class MarcoLogicoService {
       }));
 
     return {
+      alcance: soloMias ? 'MIS_ACTIVIDADES' : 'COMPLETO',
       proyecto: { id: p.id, codigo: p.codigo, nombre: p.nombre, estado: p.estado, fechaInicio: p.fechaInicio, fechaFin: p.fechaFin },
       resultados: vista,
     };
