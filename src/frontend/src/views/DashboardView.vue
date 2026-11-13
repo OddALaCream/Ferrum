@@ -96,7 +96,10 @@ onMounted(async () => {
         class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         aria-label="Indicadores de la cartera"
       >
-        <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
+        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
+          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+            <i class="pi pi-briefcase text-base" aria-hidden="true" />
+          </span>
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
             {{ esTecnico ? 'Mis proyectos' : 'Proyectos' }}
           </p>
@@ -107,7 +110,10 @@ onMounted(async () => {
             {{ resumen.totalProyectos }}
           </p>
         </div>
-        <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
+        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
+          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-green-50 text-green-600">
+            <i class="pi pi-play-circle text-base" aria-hidden="true" />
+          </span>
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
             En ejecución
           </p>
@@ -118,7 +124,10 @@ onMounted(async () => {
             {{ resumen.porEstado.EN_EJECUCION }}
           </p>
         </div>
-        <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
+        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
+          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+            <i class="pi pi-dollar text-base" aria-hidden="true" />
+          </span>
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
             Presupuesto total
           </p>
@@ -129,7 +138,10 @@ onMounted(async () => {
             {{ formatoMonto(resumen.presupuestoBob, 'BOB') }}
           </p>
         </div>
-        <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
+        <div class="relative rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-md">
+          <span class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+            <i class="pi pi-users text-base" aria-hidden="true" />
+          </span>
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
             Técnicos activos
           </p>
