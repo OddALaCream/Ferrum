@@ -364,7 +364,7 @@ async function guardar() {
         </p>
       </div>
       <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-1.5">
+        <div class="flex min-w-0 flex-col gap-1.5">
           <label
             for="act-meta"
             class="text-sm font-medium text-slate-700"
@@ -375,9 +375,11 @@ async function guardar() {
             :min="0"
             :max-fraction-digits="2"
             :disabled="guardando"
+            class="w-full"
+            input-class="w-full min-w-0"
           />
         </div>
-        <div class="flex flex-col gap-1.5">
+        <div class="flex min-w-0 flex-col gap-1.5">
           <label
             for="act-unidad"
             class="text-sm font-medium text-slate-700"
@@ -388,6 +390,7 @@ async function guardar() {
             maxlength="150"
             placeholder="talleres…"
             :disabled="guardando"
+            class="w-full min-w-0"
           />
         </div>
       </div>
