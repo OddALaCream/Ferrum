@@ -31,7 +31,7 @@ export class MarcoLogicoService {
 
   /**
    * Marco lógico: resultados → indicadores y actividades (con sesiones y tareas).
-   * El Técnico solo recibe los resultados y las actividades que tiene a su cargo.
+   * El Técnico solo recibe sus actividades, y los resultados donde tiene actividades o indicadores a su cargo.
    */
   async arbol(proyectoId: string, usuario?: UsuarioAutenticado): Promise<ArbolMarcoLogico> {
     const soloMias = usuario?.rol === RolUsuario.TECNICO;
@@ -43,7 +43,8 @@ export class MarcoLogicoService {
 
     const vista: ResultadoVista[] = resultados
       .map((r) => (soloMias ? { ...r, actividades: r.actividades.filter((a) => a.responsableId === usuario.id) } : r))
-      .filter((r) => !soloMias || r.actividades.length > 0)
+      // El Técnico ve los resultados donde tiene actividades a su cargo o es responsable de algún indicador
+      .filter((r) => !soloMias || r.actividades.length > 0 || r.indicadores.some((i) => i.responsableId === usuario.id))
       .sort((a, b) => compararCodigos(a.codigo, b.codigo))
       .map((r) => ({
         ...r,

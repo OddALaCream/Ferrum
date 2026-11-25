@@ -1,0 +1,20 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Actividad } from '../marco-logico/entities/actividad.entity';
+import { Iov } from '../marco-logico/entities/iov.entity';
+import { ProyectoEquipo } from '../proyectos/entities/proyecto-equipo.entity';
+import { ProyectoSupervisor } from '../proyectos/entities/proyecto-supervisor.entity';
+import { Proyecto } from '../proyectos/entities/proyecto.entity';
+import { AvancesController } from './avances.controller';
+import { AvancesService } from './avances.service';
+import { Avance } from './entities/avance.entity';
+import { Evidencia } from './entities/evidencia.entity';
+
+/** Seguimiento: avances de indicadores y actividades con sus evidencias (SGP-82). El almacenamiento es global. */
+@Module({
+  // ProyectoEquipo y ProyectoSupervisor: los requiere @AlcanceProyecto
+  imports: [TypeOrmModule.forFeature([Avance, Evidencia, Proyecto, Iov, Actividad, ProyectoEquipo, ProyectoSupervisor])],
+  controllers: [AvancesController],
+  providers: [AvancesService],
+})
+export class AvancesModule {}

@@ -14,6 +14,7 @@ import { ProyectosModule } from './modules/proyectos/proyectos.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { MarcoLogicoModule } from './modules/marco-logico/marco-logico.module';
 import { ObjetivosEspecificosModule } from './modules/objetivos-especificos/objetivos-especificos.module';
+import { AvancesModule } from './modules/seguimiento/avances.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ObjetivosEspecificosModule } from './modules/objetivos-especificos/obje
     ProyectosModule,
     ObjetivosEspecificosModule,
     MarcoLogicoModule,
+    AvancesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

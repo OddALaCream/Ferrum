@@ -1,0 +1,355 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'node:crypto';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
+import { StorageAdapter } from '../../infrastructure/storage/storage.adapter';
+import type { UsuarioAutenticado } from '../auth/types/auth.types';
+import { Actividad } from '../marco-logico/entities/actividad.entity';
+import { Iov } from '../marco-logico/entities/iov.entity';
+import { esFechaValida, hoyIso } from '../marco-logico/utils/estado-efectivo';
+import { Proyecto } from '../proyectos/entities/proyecto.entity';
+import { RolUsuario } from '../proyectos/entities/usuario.entity';
+import type { AvanceVista, EvidenciaVista } from './avances.types';
+import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto } from './dto/avance.dto';
+import { Avance, type EstadoAvance } from './entities/avance.entity';
+import { Evidencia } from './entities/evidencia.entity';
+import { detectarTipo, motivoRechazo, nombreLimpio, sha256, TIPOS_ADMITIDOS, type ArchivoSubido } from './utils/archivo';
+
+/** Estados en que el autor todavía puede corregir su avance y sus evidencias. */
+const EDITABLES: readonly EstadoAvance[] = ['BORRADOR', 'OBSERVADO'];
+/** Evidencias por avance: suficiente para un informe con fotos y actas, sin volverlo un repositorio. */
+export const MAX_EVIDENCIAS = 10;
+
+interface Objetivo {
+  tipo: 'IOV' | 'ACTIVIDAD';
+  id: string;
+  responsableId: string | null;
+}
+
+/**
+ * SGP-82 (RF-11, RF-12, RN-02, RN-04, RN-10): el técnico responsable registra el avance de un indicador o
+ * de una actividad, con su fecha de corte y sus evidencias. El avance nace en BORRADOR; para enviarlo a
+ * revisión necesita al menos una evidencia (CP-12). Los borradores solo los ve su autor.
+ */
+@Injectable()
+export class AvancesService {
+  private readonly logger = new Logger(AvancesService.name);
+
+  constructor(
+    private readonly ds: DataSource,
+    private readonly storage: StorageAdapter,
+    @InjectRepository(Avance) private readonly avances: Repository<Avance>,
+    @InjectRepository(Evidencia) private readonly evidencias: Repository<Evidencia>,
+    @InjectRepository(Proyecto) private readonly proyectos: Repository<Proyecto>,
+    @InjectRepository(Iov) private readonly indicadores: Repository<Iov>,
+    @InjectRepository(Actividad) private readonly actividades: Repository<Actividad>,
+  ) {}
+
+  // ---------------------------------------------------------------- consulta
+
+  /** Avances del proyecto. El Técnico ve los suyos (también borradores); los demás, solo los enviados en adelante. */
+  async listar(proyectoId: string, filtros: ListarAvancesDto, usuario: UsuarioAutenticado): Promise<AvanceVista[]> {
+    await this.proyecto(proyectoId);
+    const condiciones = ['r.proyecto_id = $1'];
+    const params: unknown[] = [proyectoId];
+    const agregar = (sql: string, valor: unknown) => {
+      params.push(valor);
+      condiciones.push(sql.replace('?', `$${params.length}`));
+    };
+    if (filtros.iovId) agregar('a.iov_id = ?', filtros.iovId);
+    if (filtros.actividadId) agregar('a.actividad_id = ?', filtros.actividadId);
+    if (usuario.rol === RolUsuario.TECNICO) agregar('a.autor_id = ?', usuario.id);
+    else condiciones.push(`a.estado <> 'BORRADOR'`);
+
+    const filas: Array<Record<string, unknown>> = await this.ds.query(
+      `SELECT a.id, a.iov_id, a.actividad_id, a.autor_id, u.nombre AS autor_nombre, a.valor_reportado,
+              to_char(a.fecha_corte, 'YYYY-MM-DD') AS fecha_corte, a.descripcion, a.estado, a.enviado_at, a.observacion,
+              a.created_at, a.updated_at,
+              COALESCE(i.codigo, c.codigo) AS objetivo_codigo,
+              COALESCE(i.descripcion, c.nombre) AS objetivo_nombre,
+              i.unidad AS objetivo_unidad
+         FROM avances a
+         LEFT JOIN iov i         ON i.id = a.iov_id
+         LEFT JOIN actividades c ON c.id = a.actividad_id
+         JOIN resultados r       ON r.id = COALESCE(i.resultado_id, c.resultado_id)
+         JOIN usuarios u         ON u.id = a.autor_id
+        WHERE ${condiciones.join(' AND ')}
+        ORDER BY a.fecha_corte DESC, a.created_at DESC`,
+      params,
+    );
+    if (filas.length === 0) return [];
+
+    const evidencias = await this.evidencias.find({
+      where: { avanceId: In(filas.map((f) => String(f.id))) },
+      order: { createdAt: 'ASC' },
+    });
+    return filas.map((f) => ({
+      id: String(f.id),
+      objetivo: {
+        tipo: f.iov_id ? 'IOV' : 'ACTIVIDAD',
+        id: String(f.iov_id ?? f.actividad_id),
+        codigo: String(f.objetivo_codigo),
+        nombre: String(f.objetivo_nombre),
+        unidad: f.objetivo_unidad === null ? null : String(f.objetivo_unidad),
+      },
+      autor: { id: String(f.autor_id), nombre: String(f.autor_nombre) },
+      valorReportado: f.valor_reportado === null ? null : Number(f.valor_reportado),
+      fechaCorte: String(f.fecha_corte),
+      descripcion: f.descripcion === null ? null : String(f.descripcion),
+      estado: f.estado as EstadoAvance,
+      enviadoAt: f.enviado_at ? new Date(f.enviado_at as string).toISOString() : null,
+      observacion: f.observacion === null ? null : String(f.observacion),
+      createdAt: new Date(f.created_at as string).toISOString(),
+      updatedAt: new Date(f.updated_at as string).toISOString(),
+      evidencias: evidencias.filter((e) => e.avanceId === f.id).map((e) => this.evidenciaVista(e)),
+    }));
+  }
+
+  /** URL temporal (5 minutos) para descargar una evidencia. */
+  async urlDescarga(proyectoId: string, avanceId: string, evidenciaId: string, usuario: UsuarioAutenticado) {
+    const avance = await this.avance(proyectoId, avanceId);
+    if (avance.estado === 'BORRADOR' && avance.autorId !== usuario.id) throw new NotFoundException('El avance no existe.');
+    const evidencia = await this.evidencias.findOne({ where: { id: evidenciaId, avanceId } });
+    if (!evidencia) throw new NotFoundException('La evidencia no existe.');
+    return { url: await this.storage.presignedDownloadUrl(evidencia.storageKey), nombre: evidencia.nombreOriginal, venceEnSegundos: 300 };
+  }
+
+  // ---------------------------------------------------------------- registro
+
+  /** CP-11: el técnico responsable registra un avance, que queda en BORRADOR. */
+  async crear(proyectoId: string, dto: CrearAvanceDto, usuario: UsuarioAutenticado): Promise<AvanceVista> {
+    const proyecto = await this.proyectoAbierto(proyectoId);
+    if (Boolean(dto.iovId) === Boolean(dto.actividadId)) {
+      throw new BadRequestException('Indica el indicador (iovId) o la actividad (actividadId) del avance, uno de los dos.');
+    }
+    const objetivo = await this.objetivo(proyectoId, dto);
+    this.verificarResponsable(objetivo, usuario);
+    if (objetivo.tipo === 'IOV' && dto.valorReportado === undefined) {
+      throw new BadRequestException('Indica el valor alcanzado (valorReportado): un avance de indicador lo necesita.');
+    }
+    this.validarFechaCorte(dto.fechaCorte, proyecto);
+
+    const avance = await this.avances.save(
+      this.avances.create({
+        iovId: dto.iovId ?? null,
+        actividadId: dto.actividadId ?? null,
+        autorId: usuario.id,
+        valorReportado: dto.valorReportado ?? null,
+        fechaCorte: dto.fechaCorte,
+        descripcion: dto.descripcion ?? null,
+        estado: 'BORRADOR',
+      }),
+    );
+    return this.vista(proyectoId, avance.id, usuario);
+  }
+
+  async editar(proyectoId: string, avanceId: string, dto: EditarAvanceDto, usuario: UsuarioAutenticado): Promise<AvanceVista> {
+    const proyecto = await this.proyectoAbierto(proyectoId);
+    const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
+    if (dto.fechaCorte !== undefined) this.validarFechaCorte(dto.fechaCorte, proyecto);
+    if (avance.iovId && dto.valorReportado === null) {
+      throw new BadRequestException('Un avance de indicador necesita su valor alcanzado.');
+    }
+    if (dto.valorReportado !== undefined) avance.valorReportado = dto.valorReportado;
+    if (dto.fechaCorte !== undefined) avance.fechaCorte = dto.fechaCorte;
+    if (dto.descripcion !== undefined) avance.descripcion = dto.descripcion;
+    await this.avances.save(avance);
+    return this.vista(proyectoId, avance.id, usuario);
+  }
+
+  /** Solo un borrador se puede eliminar, con sus evidencias. */
+  async eliminar(proyectoId: string, avanceId: string, usuario: UsuarioAutenticado): Promise<void> {
+    await this.proyectoAbierto(proyectoId);
+    const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
+    if (avance.estado !== 'BORRADOR') {
+      throw new UnprocessableEntityException('Solo se puede eliminar un avance en borrador.');
+    }
+    const evidencias = await this.evidencias.find({ where: { avanceId } });
+    await this.ds.transaction(async (m) => {
+      if (evidencias.length) await m.delete(Evidencia, { avanceId });
+      await m.delete(Avance, { id: avanceId });
+    });
+    await Promise.all(evidencias.map((e) => this.quitarArchivo(e.storageKey)));
+  }
+
+  // ---------------------------------------------------------------- evidencias
+
+  /** RF-12 / RN-04: adjunta una evidencia (PDF, JPG, PNG o WEBP de hasta 25 MB). */
+  async subirEvidencia(
+    proyectoId: string,
+    avanceId: string,
+    archivo: ArchivoSubido | undefined,
+    usuario: UsuarioAutenticado,
+  ): Promise<EvidenciaVista> {
+    await this.proyectoAbierto(proyectoId);
+    await this.avanceEditable(proyectoId, avanceId, usuario);
+    const motivo = motivoRechazo(archivo);
+    if (motivo) throw new UnprocessableEntityException(motivo);
+    const cuantas = await this.evidencias.count({ where: { avanceId } });
+    if (cuantas >= MAX_EVIDENCIAS) {
+      throw new UnprocessableEntityException(`Un avance admite como máximo ${MAX_EVIDENCIAS} evidencias.`);
+    }
+
+    const mime = detectarTipo(archivo!.buffer)!;
+    const storageKey = `avances/${avanceId}/${randomUUID()}.${TIPOS_ADMITIDOS[mime].extension}`;
+    await this.storage.upload(storageKey, archivo!.buffer, mime);
+    try {
+      const evidencia = await this.evidencias.save(
+        this.evidencias.create({
+          avanceId,
+          version: 1,
+          reemplazaA: null,
+          storageKey,
+          nombreOriginal: nombreLimpio(archivo!.originalname),
+          mime,
+          tamanoBytes: archivo!.size,
+          sha256: sha256(archivo!.buffer),
+          subidoPorId: usuario.id,
+        }),
+      );
+      return this.evidenciaVista(evidencia);
+    } catch (e) {
+      // Si la base la rechaza, no se deja un archivo huérfano en el almacenamiento
+      await this.quitarArchivo(storageKey);
+      throw e;
+    }
+  }
+
+  /** Mientras el avance es un borrador, el autor puede quitar una evidencia equivocada. */
+  async eliminarEvidencia(proyectoId: string, avanceId: string, evidenciaId: string, usuario: UsuarioAutenticado): Promise<void> {
+    await this.proyectoAbierto(proyectoId);
+    const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
+    if (avance.estado !== 'BORRADOR') {
+      throw new UnprocessableEntityException('Las evidencias de un avance ya enviado no se pueden borrar.');
+    }
+    const evidencia = await this.evidencias.findOne({ where: { id: evidenciaId, avanceId } });
+    if (!evidencia) throw new NotFoundException('La evidencia no existe.');
+    await this.evidencias.delete(evidencia.id);
+    await this.quitarArchivo(evidencia.storageKey);
+  }
+
+  // ---------------------------------------------------------------- envío
+
+  /** CP-12: un avance sin evidencia no se puede enviar a revisión. */
+  async enviar(proyectoId: string, avanceId: string, usuario: UsuarioAutenticado): Promise<AvanceVista> {
+    await this.proyectoAbierto(proyectoId);
+    const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
+    const cuantas = await this.evidencias.count({ where: { avanceId } });
+    if (cuantas === 0) {
+      throw new UnprocessableEntityException('Adjunta al menos una evidencia (fuente de verificación) antes de enviar el avance a revisión.');
+    }
+    avance.estado = 'ENVIADO';
+    avance.enviadoAt = new Date();
+    await this.avances.save(avance);
+    return this.vista(proyectoId, avance.id, usuario);
+  }
+
+  // ---------------------------------------------------------------- reglas
+
+  private async proyecto(proyectoId: string): Promise<Proyecto> {
+    const p = await this.proyectos.findOne({ where: { id: proyectoId, deletedAt: IsNull() } });
+    if (!p) throw new NotFoundException('El proyecto no existe.');
+    return p;
+  }
+
+  private async proyectoAbierto(proyectoId: string): Promise<Proyecto> {
+    const p = await this.proyecto(proyectoId);
+    if (p.estado === 'CERRADO') {
+      throw new UnprocessableEntityException('El proyecto está cerrado: no admite avances nuevos ni cambios (RN-09).');
+    }
+    return p;
+  }
+
+  /** El indicador o la actividad, siempre que pertenezca a este proyecto. */
+  private async objetivo(proyectoId: string, dto: CrearAvanceDto): Promise<Objetivo> {
+    if (dto.iovId) {
+      const iov = await this.indicadores.findOne({ where: { id: dto.iovId, resultado: { proyectoId } }, relations: { resultado: true } });
+      if (!iov) throw new NotFoundException('El indicador no existe en este proyecto.');
+      return { tipo: 'IOV', id: iov.id, responsableId: iov.responsableId };
+    }
+    const a = await this.actividades.findOne({ where: { id: dto.actividadId, resultado: { proyectoId } }, relations: { resultado: true } });
+    if (!a) throw new NotFoundException('La actividad no existe en este proyecto.');
+    return { tipo: 'ACTIVIDAD', id: a.id, responsableId: a.responsableId };
+  }
+
+  /** RN-10: solo el técnico responsable del indicador o de la actividad registra sus avances. */
+  private verificarResponsable(objetivo: Objetivo, usuario: UsuarioAutenticado): void {
+    if (usuario.rol !== RolUsuario.TECNICO || objetivo.responsableId !== usuario.id) {
+      const que = objetivo.tipo === 'IOV' ? 'del indicador' : 'de la actividad';
+      throw new ForbiddenException(`Solo el técnico responsable ${que} puede registrar sus avances.`);
+    }
+  }
+
+  private validarFechaCorte(fecha: string, proyecto: Proyecto): void {
+    if (!esFechaValida(fecha)) throw new UnprocessableEntityException('La fecha de corte no es una fecha válida.');
+    if (fecha > hoyIso()) throw new UnprocessableEntityException('La fecha de corte no puede ser posterior a hoy.');
+    if (fecha < proyecto.fechaInicio) {
+      throw new UnprocessableEntityException(`La fecha de corte no puede ser anterior al inicio del proyecto (${proyecto.fechaInicio}).`);
+    }
+  }
+
+  /** Avance del proyecto, sin importar quién lo pide (los permisos se revisan aparte). */
+  private async avance(proyectoId: string, avanceId: string): Promise<Avance> {
+    const avance = await this.avances
+      .createQueryBuilder('a')
+      .leftJoin(Iov, 'i', 'i.id = a.iov_id')
+      .leftJoin(Actividad, 'c', 'c.id = a.actividad_id')
+      .innerJoin('resultados', 'r', 'r.id = COALESCE(i.resultado_id, c.resultado_id)')
+      .where('a.id = :avanceId AND r.proyecto_id = :proyectoId', { avanceId, proyectoId })
+      .getOne();
+    if (!avance) throw new NotFoundException('El avance no existe.');
+    return avance;
+  }
+
+  /** Solo el autor corrige su avance, y solo mientras es borrador o fue observado. */
+  private async avanceEditable(proyectoId: string, avanceId: string, usuario: UsuarioAutenticado): Promise<Avance> {
+    const avance = await this.avance(proyectoId, avanceId);
+    if (avance.autorId !== usuario.id) {
+      if (avance.estado === 'BORRADOR') throw new NotFoundException('El avance no existe.');
+      throw new ForbiddenException('Solo el técnico que registró el avance puede modificarlo.');
+    }
+    if (!EDITABLES.includes(avance.estado)) {
+      throw new UnprocessableEntityException(
+        avance.estado === 'ENVIADO'
+          ? 'El avance ya se envió a revisión: no se puede modificar hasta que el Administrador lo revise.'
+          : `Un avance ${avance.estado.toLowerCase()} no se puede modificar.`,
+      );
+    }
+    return avance;
+  }
+
+  private async vista(proyectoId: string, avanceId: string, usuario: UsuarioAutenticado): Promise<AvanceVista> {
+    const lista = await this.listar(proyectoId, {}, usuario);
+    const encontrado = lista.find((a) => a.id === avanceId);
+    if (!encontrado) throw new NotFoundException('El avance no existe.');
+    return encontrado;
+  }
+
+  private evidenciaVista(e: Evidencia): EvidenciaVista {
+    return {
+      id: e.id,
+      version: e.version,
+      nombreOriginal: e.nombreOriginal,
+      mime: e.mime,
+      tamanoBytes: Number(e.tamanoBytes),
+      sha256: e.sha256,
+      subidoPorId: e.subidoPorId,
+      createdAt: e.createdAt.toISOString(),
+    };
+  }
+
+  private async quitarArchivo(storageKey: string): Promise<void> {
+    try {
+      await this.storage.remove(storageKey);
+    } catch (e) {
+      this.logger.warn(`No se pudo borrar ${storageKey} del almacenamiento: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}
