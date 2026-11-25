@@ -355,6 +355,7 @@ watch(() => props.id, () => cargar(), { immediate: true });
         :es-administrador="esAdministrador"
         :es-tecnico="auth.role === 'tecnico'"
         :proyecto-cerrado="cerrado"
+        :inicio-proyecto="arbol.proyecto.fechaInicio"
         @cambio="recargar"
         @agregar-indicador="abrirIndicador(r)"
         @agregar-actividad="abrirActividad(r)"

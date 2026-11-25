@@ -5,6 +5,7 @@ import type { TecnicoProyecto } from '@/api/equipo';
 import type { Resultado } from '@/api/marcoLogico';
 import { formatoNumero } from '@/utils/formato';
 import ActividadItem from './ActividadItem.vue';
+import AvancesDialog, { type ObjetivoAvance } from './AvancesDialog.vue';
 import BarraAvance from './BarraAvance.vue';
 
 /** Un resultado esperado del marco lógico, con sus indicadores (I.O.V.) y sus actividades. */
@@ -19,6 +20,8 @@ const props = defineProps<{
   esAdministrador: boolean;
   esTecnico: boolean;
   proyectoCerrado: boolean;
+  /** Inicio del proyecto: límite inferior de la fecha de corte de un avance. */
+  inicioProyecto: string;
 }>();
 const emit = defineEmits<{ cambio: []; 'agregar-indicador': []; 'agregar-actividad': [] }>();
 
@@ -35,6 +38,19 @@ const avance = computed(() => {
   const a = props.resultado.actividades;
   return a.length ? a.reduce((s, x) => s + x.cumplimientoPct, 0) / a.length : 0;
 });
+/** SGP-82 (RN-10): solo el técnico responsable registra avances, y nunca en un proyecto cerrado. */
+const puedeRegistrar = (responsableId: string | null | undefined) =>
+  !props.proyectoCerrado && props.esTecnico && !!responsableId && responsableId === props.usuarioId;
+
+const dialogoAvances = ref(false);
+const objetivoAvances = ref<ObjetivoAvance | null>(null);
+const registraAvances = ref(false);
+function abrirAvances(objetivo: ObjetivoAvance, responsableId: string | null | undefined) {
+  objetivoAvances.value = objetivo;
+  registraAvances.value = puedeRegistrar(responsableId);
+  dialogoAvances.value = true;
+}
+
 const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.estadoEfectivo === 'RETRASADA').length);
 </script>
 
@@ -122,6 +138,9 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
               <th class="w-64 px-3 py-2 font-medium">
                 Fuentes de verificación
               </th>
+              <th class="w-36 px-3 py-2 font-medium">
+                <span class="sr-only">Avances</span>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
@@ -147,6 +166,18 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
               </td>
               <td class="px-3 py-2 text-xs text-slate-500">
                 {{ i.fuenteVerificacion }}
+              </td>
+              <td class="px-3 py-2 text-right">
+                <Button
+                  :label="puedeRegistrar(i.responsableId) ? 'Registrar avance' : 'Avances'"
+                  :icon="puedeRegistrar(i.responsableId) ? 'pi pi-upload' : 'pi pi-folder-open'"
+                  size="small"
+                  :severity="puedeRegistrar(i.responsableId) ? undefined : 'secondary'"
+                  :outlined="!puedeRegistrar(i.responsableId)"
+                  class="whitespace-nowrap"
+                  data-test="ver-avances-iov"
+                  @click="abrirAvances({ tipo: 'IOV', id: i.id, codigo: i.codigo, nombre: i.descripcion, unidad: i.unidad }, i.responsableId)"
+                />
               </td>
             </tr>
           </tbody>
@@ -176,7 +207,10 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
         class="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500"
         data-test="sin-actividades"
       >
-        <i class="pi pi-inbox text-base text-slate-400" aria-hidden="true" />
+        <i
+          class="pi pi-inbox text-base text-slate-400"
+          aria-hidden="true"
+        />
         <p>
           {{ esTecnico ? 'No tienes actividades ni tareas asignadas en este resultado.' : 'Este resultado todavía no tiene actividades.' }}
         </p>
@@ -192,9 +226,19 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
           :puede-actualizar-asignadas="esTecnico && !proyectoCerrado"
           :puede-operar="puedeOperar(a.responsableId)"
           :nombre-responsable="a.responsableId ? nombres.get(a.responsableId) : undefined"
+          :puede-registrar-avance="puedeRegistrar(a.responsableId)"
           @cambio="emit('cambio')"
+          @avances="abrirAvances({ tipo: 'ACTIVIDAD', id: a.id, codigo: a.codigo, nombre: a.nombre }, a.responsableId)"
         />
       </div>
     </div>
+
+    <AvancesDialog
+      v-model:visible="dialogoAvances"
+      :proyecto-id="proyectoId"
+      :objetivo="objetivoAvances"
+      :puede-registrar="registraAvances"
+      :inicio-proyecto="inicioProyecto"
+    />
   </section>
 </template>

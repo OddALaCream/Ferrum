@@ -32,8 +32,10 @@ const props = defineProps<{
   equipo: TecnicoProyecto[];
   usuarioId?: string | null;
   puedeActualizarAsignadas?: boolean;
+  /** SGP-82: es el técnico responsable de la actividad, con el proyecto abierto. */
+  puedeRegistrarAvance?: boolean;
 }>();
-const emit = defineEmits<{ cambio: [] }>();
+const emit = defineEmits<{ cambio: []; avances: [] }>();
 
 const toast = useToast();
 const trabajando = ref(false);
@@ -120,13 +122,24 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
           {{ actividad.nombre }}
         </h4>
       </div>
-      <Tag
-        :value="estado.label"
-        :icon="estado.icono"
-        :class="estado.clases"
-        rounded
-        data-test="estado-actividad"
-      />
+      <div class="flex items-center gap-2">
+        <Button
+          :label="puedeRegistrarAvance ? 'Registrar avance' : 'Avances'"
+          :icon="puedeRegistrarAvance ? 'pi pi-upload' : 'pi pi-folder-open'"
+          size="small"
+          :severity="puedeRegistrarAvance ? undefined : 'secondary'"
+          :outlined="!puedeRegistrarAvance"
+          data-test="ver-avances"
+          @click="emit('avances')"
+        />
+        <Tag
+          :value="estado.label"
+          :icon="estado.icono"
+          :class="estado.clases"
+          rounded
+          data-test="estado-actividad"
+        />
+      </div>
     </header>
 
     <dl class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
