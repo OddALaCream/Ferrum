@@ -182,4 +182,29 @@ describe('AvancesDialog (SGP-82)', () => {
       expect(wrapper.find('[data-test="acciones-revision"]').exists()).toBe(false);
     });
   });
+
+  describe('Evidencias enviadas, bloqueadas (SGP-134)', () => {
+    it('en borrador se pueden quitar; no hay aviso de bloqueo', async () => {
+      api.listarAvances.mockResolvedValue([avance({ evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar();
+      expect(wrapper.find('[data-test="quitar-evidencia"]').exists()).toBe(true);
+      expect(wrapper.find('[data-test="evidencias-bloqueadas"]').exists()).toBe(false);
+    });
+
+    it.each(['ENVIADO', 'APROBADO'] as const)('%s: sin botón para quitar, sin adjuntar y con aviso de bloqueo', async (estado) => {
+      api.listarAvances.mockResolvedValue([avance({ estado, evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar();
+      expect(wrapper.find('[data-test="quitar-evidencia"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="adjuntar"]').exists()).toBe(false);
+      expect(wrapper.get('[data-test="evidencias-bloqueadas"]').text()).toContain('no se pueden quitar ni modificar');
+    });
+
+    it('OBSERVADO: lo enviado sigue bloqueado, pero puede adjuntar una evidencia corregida', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', observacion: 'Foto borrosa', evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar();
+      expect(wrapper.find('[data-test="quitar-evidencia"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="evidencias-bloqueadas"]').exists()).toBe(true);
+      expect(wrapper.get('[data-test="adjuntar"]').text()).toContain('Adjuntar evidencia corregida');
+    });
+  });
 });

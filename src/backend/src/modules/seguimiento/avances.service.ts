@@ -247,12 +247,17 @@ export class AvancesService {
     }
   }
 
-  /** Mientras el avance es un borrador, el autor puede quitar una evidencia equivocada. */
+  /**
+   * Mientras el avance es un borrador, el autor puede quitar una evidencia equivocada.
+   * RN-08 (SGP-134): una vez enviado, ninguna evidencia se borra ni se modifica, tampoco si lo observan.
+   */
   async eliminarEvidencia(proyectoId: string, avanceId: string, evidenciaId: string, usuario: UsuarioAutenticado): Promise<void> {
     await this.proyectoAbierto(proyectoId);
     const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
     if (avance.estado !== 'BORRADOR') {
-      throw new UnprocessableEntityException('Las evidencias de un avance ya enviado no se pueden borrar.');
+      throw new UnprocessableEntityException(
+        'Las evidencias de un avance ya enviado no se pueden borrar ni modificar (RN-08). Si alguna está mal, adjunta la corrección.',
+      );
     }
     const evidencia = await this.evidencias.findOne({ where: { id: evidenciaId, avanceId } });
     if (!evidencia) throw new NotFoundException('La evidencia no existe.');

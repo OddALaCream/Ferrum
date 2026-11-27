@@ -22,8 +22,8 @@ export async function borrarProyectosDePrueba(ds: DataSource, prefijo: string): 
 }
 
 /**
- * Las evidencias de un avance enviado son inmutables (trigger trg_evidencia_guard), así que para limpiar se
- * desactiva ese trigger solo dentro de la transacción. Si el usuario de la base no es dueño de la tabla y no
+ * Las evidencias y los avances enviados no se pueden borrar (triggers trg_evidencia_guard y trg_avance_borrado),
+ * así que para limpiar se desactivan esos triggers solo dentro de la transacción. Si el usuario de la base no es dueño de la tabla y no
  * puede hacerlo, se dejan los proyectos de prueba como están (no afecta a las pruebas) y se avisa.
  */
 async function borrarAvances(ds: DataSource, ids: string[], deResultados: string): Promise<boolean> {
@@ -35,7 +35,9 @@ async function borrarAvances(ds: DataSource, ids: string[], deResultados: string
       await m.query(`ALTER TABLE evidencias DISABLE TRIGGER trg_evidencia_guard`);
       await m.query(`DELETE FROM evidencias WHERE avance_id IN (${deAvances})`, [ids]);
       await m.query(`ALTER TABLE evidencias ENABLE TRIGGER trg_evidencia_guard`);
+      await m.query(`ALTER TABLE avances DISABLE TRIGGER trg_avance_borrado`);
       await m.query(`DELETE FROM avances WHERE id IN (${deAvances})`, [ids]);
+      await m.query(`ALTER TABLE avances ENABLE TRIGGER trg_avance_borrado`);
     });
     return true;
   } catch (e) {

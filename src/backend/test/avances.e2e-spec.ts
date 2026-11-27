@@ -319,6 +319,79 @@ describe('Avances con evidencia (e2e, SGP-82)', () => {
     });
   });
 
+  describe('SGP-134: las evidencias de un avance enviado no se borran ni se modifican (RN-08)', () => {
+    /** Avance de la técnica con una evidencia; si `enviar`, lo manda a revisión. */
+    const conEvidencia = async (enviar = true) => {
+      const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 5, fechaCorte: hoy }).expect(201)).body.id as string;
+      const evidencia = (await subir(id, PNG, 'acta.png').expect(201)).body.id as string;
+      if (enviar) await request(http()).post(`${base()}/avances/${id}/enviar`).set(bearer('lucia')).expect(200);
+      const [{ storage_key }] = await ds.query(`SELECT storage_key FROM evidencias WHERE id = $1`, [evidencia]);
+      return { id, evidencia, storageKey: storage_key as string };
+    };
+    const borrarEvidencia = (avanceId: string, evidenciaId: string, quien: keyof typeof tokens = 'lucia') =>
+      request(http()).delete(`${base()}/avances/${avanceId}/evidencias/${evidenciaId}`).set(bearer(quien));
+
+    it('enviado: la técnica no puede borrar su evidencia, agregar otra ni eliminar el avance; el archivo sigue ahí', async () => {
+      const a = await conEvidencia();
+      await borrarEvidencia(a.id, a.evidencia).expect(422);
+      await subir(a.id, PNG, 'otra.png').expect(422);
+      await request(http()).delete(`${base()}/avances/${a.id}`).set(bearer('lucia')).expect(422);
+
+      expect(almacen.objetos.has(a.storageKey)).toBe(true);
+      expect((await ds.query(`SELECT COUNT(*)::int AS n FROM evidencias WHERE avance_id = $1`, [a.id]))[0].n).toBe(1);
+    });
+
+    it('observado: lo ya enviado queda intacto; solo se agregan evidencias nuevas para corregir', async () => {
+      const a = await conEvidencia();
+      await request(http()).patch(`${base()}/avances/${a.id}/observar`).set(bearer('admin')).send({ observacion: 'La foto no se lee.' }).expect(200);
+
+      const r = await borrarEvidencia(a.id, a.evidencia).expect(422);
+      expect(r.body.detail).toContain('no se pueden borrar ni modificar');
+      await subir(a.id, PNG, 'foto-nitida.png').expect(201);
+
+      const [avance] = (await request(http()).get(`${base()}/avances?iovId=${ids.iov}`).set(bearer('lucia')).expect(200)).body.filter((x: { id: string }) => x.id === a.id);
+      expect(avance.evidencias.map((e: { nombreOriginal: string }) => e.nombreOriginal)).toEqual(['acta.png', 'foto-nitida.png']);
+      expect(almacen.objetos.has(a.storageKey)).toBe(true);
+    });
+
+    it('aprobado: ya no admite ningún cambio en sus evidencias', async () => {
+      const a = await conEvidencia();
+      await request(http()).patch(`${base()}/avances/${a.id}/aprobar`).set(bearer('admin')).expect(200);
+      await borrarEvidencia(a.id, a.evidencia).expect(422);
+      await subir(a.id, PNG, 'tarde.png').expect(422);
+      expect(almacen.objetos.has(a.storageKey)).toBe(true);
+    });
+
+    it('el Administrador y el Supervisor tampoco borran evidencias (403)', async () => {
+      const a = await conEvidencia();
+      await borrarEvidencia(a.id, a.evidencia, 'admin').expect(403);
+      await borrarEvidencia(a.id, a.evidencia, 'supervisor').expect(403);
+    });
+
+    it('la base de datos lo impide aunque alguien se salte la API', async () => {
+      const enviado = await conEvidencia();
+      const borrador = await conEvidencia(false);
+
+      // Modificar: nunca, ni siquiera en un borrador
+      await expect(ds.query(`UPDATE evidencias SET nombre_original = 'otro.png' WHERE id = $1`, [enviado.evidencia])).rejects.toThrow('no se pueden modificar');
+      await expect(ds.query(`UPDATE evidencias SET sha256 = repeat('0', 64) WHERE id = $1`, [borrador.evidencia])).rejects.toThrow('no se pueden modificar');
+      // Borrar la evidencia o el avance enviado
+      await expect(ds.query(`DELETE FROM evidencias WHERE id = $1`, [enviado.evidencia])).rejects.toThrow('no se pueden borrar');
+      await expect(ds.query(`DELETE FROM avances WHERE id = $1`, [enviado.id])).rejects.toThrow('Solo se puede eliminar un avance en borrador');
+      // Agregar a un avance enviado
+      await expect(
+        ds.query(
+          `INSERT INTO evidencias (avance_id, storage_key, nombre_original, mime, tamano_bytes, sha256, subido_por)
+           VALUES ($1, $2, 'colada.pdf', 'application/pdf', 10, repeat('a', 64), $3)`,
+          [enviado.id, `avances/${enviado.id}/colada.pdf`, ids.lucia],
+        ),
+      ).rejects.toThrow('borrador u observado');
+
+      // El borrador sí se puede limpiar por la API
+      await request(http()).delete(`${base()}/avances/${borrador.id}`).set(bearer('lucia')).expect(204);
+    });
+  });
+
   describe('Borradores y proyectos cerrados', () => {
     it('un borrador se elimina con sus evidencias', async () => {
       const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 3, fechaCorte: hoy }).expect(201)).body.id;
