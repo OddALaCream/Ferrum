@@ -15,6 +15,8 @@ export interface Evidencia {
 
 export interface Avance {
   id: string;
+  /** Proyecto al que pertenece (la bandeja de revisión junta varios proyectos). */
+  proyecto: { id: string; codigo: string; nombre: string };
   /** A qué aporta: un indicador (I.O.V.) o una actividad. */
   objetivo: { tipo: 'IOV' | 'ACTIVIDAD'; id: string; codigo: string; nombre: string; unidad: string | null };
   autor: { id: string; nombre: string };
@@ -24,6 +26,9 @@ export interface Avance {
   estado: EstadoAvance;
   enviadoAt: string | null;
   observacion: string | null;
+  /** Quién lo aprobó u observó, y cuándo. */
+  revisadoPor: { id: string; nombre: string } | null;
+  revisadoAt: string | null;
   createdAt: string;
   updatedAt: string;
   evidencias: Evidencia[];
@@ -102,6 +107,24 @@ export async function urlEvidencia(proyectoId: string, avanceId: string, evidenc
 /** Envía el avance a revisión. Sin al menos una evidencia, el servidor lo rechaza. */
 export async function enviarAvance(proyectoId: string, avanceId: string): Promise<Avance> {
   const { data } = await http.post<Avance>(`${base(proyectoId)}/${avanceId}/enviar`);
+  return data;
+}
+
+/** SGP-94: el Administrador aprueba un avance enviado; desde ahí cuenta para el cumplimiento. */
+export async function aprobarAvance(proyectoId: string, avanceId: string): Promise<Avance> {
+  const { data } = await http.patch<Avance>(`${base(proyectoId)}/${avanceId}/aprobar`);
+  return data;
+}
+
+/** SGP-94: el Administrador observa un avance enviado; vuelve al técnico con la observación. */
+export async function observarAvance(proyectoId: string, avanceId: string, observacion: string): Promise<Avance> {
+  const { data } = await http.patch<Avance>(`${base(proyectoId)}/${avanceId}/observar`, { observacion });
+  return data;
+}
+
+/** SGP-96: avances enviados de todos los proyectos abiertos, del más antiguo al más reciente. */
+export async function listarBandeja(): Promise<Avance[]> {
+  const { data } = await http.get<Avance[]>('/avances/revision');
   return data;
 }
 

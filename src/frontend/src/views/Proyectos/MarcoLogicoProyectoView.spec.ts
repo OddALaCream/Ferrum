@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { createPinia, setActivePinia } from 'pinia';
 import PrimeVue from 'primevue/config';
+import ConfirmationService from 'primevue/confirmationservice';
 import ToastService from 'primevue/toastservice';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actividad, ArbolMarcoLogico } from '@/api/marcoLogico';
@@ -37,7 +38,7 @@ function actividad(c: Partial<Actividad>): Actividad {
 function arbol(estado = 'EN_EJECUCION'): ArbolMarcoLogico {
   return {
     alcance: 'COMPLETO',
-    proyecto: { id: 'p-1', codigo: 'PRY-AGRO-2026', nombre: 'Producción agroecológica', estado, fechaInicio: '2026-09-01', fechaFin: '2027-03-31' },
+    proyecto: { id: 'p-1', codigo: 'PRY-AGRO-2026', nombre: 'Producción agroecológica', estado, fechaInicio: '2026-09-01', fechaFin: '2027-03-31', cumplimientoPct: 42.5 },
     resultados: [
       {
         id: 'r-1', proyectoId: 'p-1', codigo: 'R.1', descripcion: 'Implementados sistemas de producción agroecológica', peso: 0, cumplimientoPct: 0,
@@ -84,7 +85,7 @@ async function montar(rol: Rol = 'administrador') {
   const wrapper = mount(MarcoLogicoProyectoView, {
     props: { id: 'p-1' },
     global: {
-      plugins: [pinia, PrimeVue, ToastService],
+      plugins: [pinia, PrimeVue, ToastService, ConfirmationService],
       stubs: { RouterLink: { template: '<a><slot /></a>' }, Dialog: { template: '<div />' } },
     },
   });
@@ -221,6 +222,19 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
     expect(api.cambiarEstadoTarea).toHaveBeenCalledWith('p-1', 'delegada', 'COMPLETADA');
   });
 
+  it('SGP-82: el técnico responsable ve "Registrar avance" en su actividad; en la ajena, solo "Avances"', async () => {
+    const wrapper = await montar('tecnico');
+    expect(wrapper.get('[data-test="actividad-A.1.1"] [data-test="ver-avances"]').text()).toContain('Registrar avance');
+    expect(wrapper.get('[data-test="actividad-A.1.3"] [data-test="ver-avances"]').text()).toBe('Avances');
+  });
+
+  it('SGP-82: el Administrador y el Supervisor revisan avances pero no los registran', async () => {
+    for (const rol of ['administrador', 'supervisor'] as const) {
+      const wrapper = await montar(rol);
+      for (const b of wrapper.findAll('[data-test="ver-avances"], [data-test="ver-avances-iov"]')) expect(b.text()).toBe('Avances');
+    }
+  });
+
   it('un proyecto cerrado queda en solo lectura (RN-09)', async () => {
     api.obtenerMarcoLogico.mockResolvedValue(arbol('CERRADO'));
     const wrapper = await montar('administrador');
@@ -236,15 +250,22 @@ describe('MarcoLogicoProyectoView (SGP-9, 10, 81, 111, 113)', () => {
 
     expect(wrapper.get('[data-test="solo-mias"]').text()).toContain('solo las actividades que tienes a tu cargo');
     expect(wrapper.text()).toContain('Mi avance');
-    expect(wrapper.text()).not.toContain('Avance general');
+    expect(wrapper.text()).not.toContain('Avance de actividades');
   });
 
   it('el Administrador y el Supervisor ven el marco lógico completo, sin ese aviso', async () => {
     for (const rol of ['administrador', 'supervisor'] as const) {
       const wrapper = await montar(rol);
       expect(wrapper.find('[data-test="solo-mias"]').exists()).toBe(false);
-      expect(wrapper.text()).toContain('Avance general');
+      expect(wrapper.text()).toContain('Avance de actividades');
     }
+  });
+
+  it('SGP-96: muestra el cumplimiento del proyecto según sus indicadores', async () => {
+    const wrapper = await montar('administrador');
+    const caja = wrapper.get('[data-test="cumplimiento-proyecto"]');
+    expect(caja.text()).toContain('43%');
+    expect(caja.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('43');
   });
 
   it('CP-13: una actividad completada muestra su fecha de cierre; una en curso, cuándo empezó', async () => {

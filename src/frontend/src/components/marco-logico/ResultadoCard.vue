@@ -33,7 +33,10 @@ const puedeOperar = (responsableId: string | null) =>
   !props.proyectoCerrado &&
   (props.esAdministrador || (props.esTecnico && responsableId !== null && responsableId === props.usuarioId));
 
-/** Avance del resultado: promedio del avance de sus actividades. */
+/** SGP-95: cumplimiento del resultado, según los avances aprobados de sus indicadores. */
+const cumplimiento = computed(() => Number(props.resultado.cumplimientoPct) || 0);
+const tono = (pct: number) => (pct >= 100 ? 'completado' : 'normal');
+/** Avance de las actividades del resultado: promedio de su avance. */
 const avance = computed(() => {
   const a = props.resultado.actividades;
   return a.length ? a.reduce((s, x) => s + x.cumplimientoPct, 0) / a.length : 0;
@@ -77,14 +80,26 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
             {{ expandida ? 'Ver menos' : 'Ver completo' }}
           </button>
         </div>
-        <div class="w-44 shrink-0">
-          <p class="mb-1 flex justify-between text-xs text-slate-500">
-            <span>Avance</span><span class="font-medium tabular-nums text-slate-700">{{ Math.round(avance) }}%</span>
-          </p>
-          <BarraAvance
-            :pct="avance"
-            :etiqueta="`Avance de ${resultado.codigo}`"
-          />
+        <div class="w-48 shrink-0 space-y-2">
+          <div data-test="cumplimiento-resultado">
+            <p class="mb-1 flex justify-between text-xs text-slate-500">
+              <span>Cumplimiento</span><span class="font-semibold tabular-nums text-slate-800">{{ Math.round(cumplimiento) }}%</span>
+            </p>
+            <BarraAvance
+              :pct="cumplimiento"
+              :tono="tono(cumplimiento)"
+              :etiqueta="`Cumplimiento de ${resultado.codigo}`"
+            />
+          </div>
+          <div>
+            <p class="mb-1 flex justify-between text-xs text-slate-500">
+              <span>Actividades</span><span class="font-medium tabular-nums text-slate-700">{{ Math.round(avance) }}%</span>
+            </p>
+            <BarraAvance
+              :pct="avance"
+              :etiqueta="`Avance de las actividades de ${resultado.codigo}`"
+            />
+          </div>
           <p
             v-if="retrasadas"
             class="mt-1.5 text-xs font-medium text-red-600"
@@ -123,7 +138,7 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
         v-else
         class="overflow-x-auto rounded-lg border border-slate-200"
       >
-        <table class="w-full min-w-[40rem] text-left text-sm">
+        <table class="w-full min-w-[52rem] text-left text-sm">
           <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th class="w-24 px-3 py-2 font-medium">
@@ -132,13 +147,16 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
               <th class="px-3 py-2 font-medium">
                 Indicador / responsable
               </th>
-              <th class="w-40 px-3 py-2 font-medium">
+              <th class="w-32 px-3 py-2 font-medium">
                 Meta
               </th>
-              <th class="w-64 px-3 py-2 font-medium">
+              <th class="w-40 px-3 py-2 font-medium">
+                Cumplimiento
+              </th>
+              <th class="w-44 px-3 py-2 font-medium">
                 Fuentes de verificación
               </th>
-              <th class="w-36 px-3 py-2 font-medium">
+              <th class="w-32 px-3 py-2 font-medium">
                 <span class="sr-only">Avances</span>
               </th>
             </tr>
@@ -163,6 +181,20 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
                   v-if="i.lineaBase > 0"
                   class="block text-xs text-slate-400"
                 >desde {{ formatoNumero(i.lineaBase) }}</span>
+              </td>
+              <td
+                class="px-3 py-2"
+                data-test="cumplimiento-iov"
+              >
+                <p class="mb-1 flex justify-between gap-2 text-xs">
+                  <span class="tabular-nums text-slate-500">{{ formatoNumero(i.valorActual) }} de {{ formatoNumero(i.meta) }}</span>
+                  <span class="font-semibold tabular-nums text-slate-800">{{ Math.round(i.cumplimientoPct) }}%</span>
+                </p>
+                <BarraAvance
+                  :pct="i.cumplimientoPct"
+                  :tono="tono(i.cumplimientoPct)"
+                  :etiqueta="`Cumplimiento de ${i.codigo}`"
+                />
               </td>
               <td class="px-3 py-2 text-xs text-slate-500">
                 {{ i.fuenteVerificacion }}
@@ -239,6 +271,8 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
       :objetivo="objetivoAvances"
       :puede-registrar="registraAvances"
       :inicio-proyecto="inicioProyecto"
+      :puede-revisar="esAdministrador && !proyectoCerrado"
+      @revisado="emit('cambio')"
     />
   </section>
 </template>

@@ -70,12 +70,28 @@ export class AvancesService {
     if (filtros.actividadId) agregar('a.actividad_id = ?', filtros.actividadId);
     if (usuario.rol === RolUsuario.TECNICO) agregar('a.autor_id = ?', usuario.id);
     else condiciones.push(`a.estado <> 'BORRADOR'`);
+    return this.consultar(condiciones, params, 'a.fecha_corte DESC, a.created_at DESC');
+  }
 
+  /**
+   * SGP-96: bandeja del Administrador. Los avances enviados de todos los proyectos abiertos,
+   * del más antiguo al más reciente, para revisarlos en orden de llegada.
+   */
+  async bandeja(): Promise<AvanceVista[]> {
+    return this.consultar(
+      [`a.estado = 'ENVIADO'`, 'p.deleted_at IS NULL', `p.estado <> 'CERRADO'`],
+      [],
+      'a.enviado_at ASC NULLS LAST, a.created_at ASC',
+    );
+  }
+
+  private async consultar(condiciones: string[], params: unknown[], orden: string): Promise<AvanceVista[]> {
     const filas: Array<Record<string, unknown>> = await this.ds.query(
       `SELECT a.id, a.iov_id, a.actividad_id, a.autor_id, u.nombre AS autor_nombre, a.valor_reportado,
               to_char(a.fecha_corte, 'YYYY-MM-DD') AS fecha_corte, a.descripcion, a.estado, a.enviado_at, a.observacion,
               a.revisado_por, rv.nombre AS revisor_nombre, a.revisado_at,
               a.created_at, a.updated_at,
+              p.id AS proyecto_id, p.codigo AS proyecto_codigo, p.nombre AS proyecto_nombre,
               COALESCE(i.codigo, c.codigo) AS objetivo_codigo,
               COALESCE(i.descripcion, c.nombre) AS objetivo_nombre,
               i.unidad AS objetivo_unidad
@@ -83,10 +99,11 @@ export class AvancesService {
          LEFT JOIN iov i         ON i.id = a.iov_id
          LEFT JOIN actividades c ON c.id = a.actividad_id
          JOIN resultados r       ON r.id = COALESCE(i.resultado_id, c.resultado_id)
+         JOIN proyectos p        ON p.id = r.proyecto_id
          JOIN usuarios u         ON u.id = a.autor_id
          LEFT JOIN usuarios rv   ON rv.id = a.revisado_por
         WHERE ${condiciones.join(' AND ')}
-        ORDER BY a.fecha_corte DESC, a.created_at DESC`,
+        ORDER BY ${orden}`,
       params,
     );
     if (filas.length === 0) return [];
@@ -97,6 +114,7 @@ export class AvancesService {
     });
     return filas.map((f) => ({
       id: String(f.id),
+      proyecto: { id: String(f.proyecto_id), codigo: String(f.proyecto_codigo), nombre: String(f.proyecto_nombre) },
       objetivo: {
         tipo: f.iov_id ? 'IOV' : 'ACTIVIDAD',
         id: String(f.iov_id ?? f.actividad_id),

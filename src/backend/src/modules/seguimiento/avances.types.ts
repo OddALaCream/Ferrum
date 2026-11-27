@@ -14,6 +14,8 @@ export interface EvidenciaVista {
 /** Un avance con lo que lo identifica (indicador o actividad) y sus evidencias. */
 export interface AvanceVista {
   id: string;
+  /** Proyecto al que pertenece (lo usa la bandeja de revisión, que junta varios proyectos). */
+  proyecto: { id: string; codigo: string; nombre: string };
   /** A qué aporta: un indicador (I.O.V.) o una actividad. */
   objetivo: { tipo: 'IOV' | 'ACTIVIDAD'; id: string; codigo: string; nombre: string; unidad: string | null };
   autor: { id: string; nombre: string };

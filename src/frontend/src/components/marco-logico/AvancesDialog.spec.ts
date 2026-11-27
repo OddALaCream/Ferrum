@@ -23,16 +23,16 @@ const EVIDENCIA = { id: 'e-1', version: 1, nombreOriginal: 'acta.pdf', mime: 'ap
 
 function avance(cambios: Partial<Avance> = {}): Avance {
   return {
-    id: 'av-1', objetivo: { tipo: 'IOV', id: IOV.id, codigo: IOV.codigo, nombre: IOV.nombre, unidad: 'beneficiarios' },
+    id: 'av-1', proyecto: { id: 'p-1', codigo: 'PRY-1', nombre: 'Proyecto' }, objetivo: { tipo: 'IOV', id: IOV.id, codigo: IOV.codigo, nombre: IOV.nombre, unidad: 'beneficiarios' },
     autor: { id: 'u', nombre: 'Lucía Condori' }, valorReportado: 40, fechaCorte: '2026-11-20', descripcion: null,
-    estado: 'BORRADOR', enviadoAt: null, observacion: null, createdAt: '2026-11-20T12:00:00Z', updatedAt: '2026-11-20T12:00:00Z', evidencias: [],
+    estado: 'BORRADOR', enviadoAt: null, observacion: null, revisadoPor: null, revisadoAt: null, createdAt: '2026-11-20T12:00:00Z', updatedAt: '2026-11-20T12:00:00Z', evidencias: [],
     ...cambios,
   };
 }
 
-async function montar(puedeRegistrar = true) {
+async function montar(puedeRegistrar = true, puedeRevisar = false) {
   const wrapper = mount(AvancesDialog, {
-    props: { proyectoId: 'p-1', objetivo: IOV, puedeRegistrar, inicioProyecto: '2026-01-01', visible: false },
+    props: { proyectoId: 'p-1', objetivo: IOV, puedeRegistrar, puedeRevisar, inicioProyecto: '2026-01-01', visible: false },
     global: { plugins: [PrimeVue], stubs: { Dialog: { template: '<div><slot /></div>' } } },
   });
   await wrapper.setProps({ visible: true });
@@ -160,5 +160,26 @@ describe('AvancesDialog (SGP-82)', () => {
     await flushPromises();
     expect(api.eliminarAvance).toHaveBeenCalledWith('p-1', 'av-1');
     expect(wrapper.find('[data-test="avance"]').exists()).toBe(false);
+  });
+
+  describe('Revisión del Administrador (SGP-96)', () => {
+    it('el Administrador ve Aprobar y Observar solo en los avances enviados', async () => {
+      api.listarAvances.mockResolvedValue([
+        avance({ id: 'av-env', estado: 'ENVIADO', evidencias: [EVIDENCIA] }),
+        avance({ id: 'av-apr', estado: 'APROBADO', evidencias: [EVIDENCIA], revisadoPor: { id: 'a', nombre: 'Ana Admin' }, revisadoAt: '2026-11-21T12:00:00Z' }),
+      ]);
+      const wrapper = await montar(false, true);
+      const [enviado, aprobado] = wrapper.findAll('[data-test="avance"]');
+      expect(enviado.find('[data-test="aprobar"]').exists()).toBe(true);
+      expect(enviado.find('[data-test="observar"]').exists()).toBe(true);
+      expect(aprobado.find('[data-test="acciones-revision"]').exists()).toBe(false);
+      expect(aprobado.get('[data-test="avance-revision"]').text()).toContain('Aprobado por Ana Admin');
+    });
+
+    it('el Supervisor solo mira: no tiene acciones de revisión', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'ENVIADO', evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar(false, false);
+      expect(wrapper.find('[data-test="acciones-revision"]').exists()).toBe(false);
+    });
   });
 });

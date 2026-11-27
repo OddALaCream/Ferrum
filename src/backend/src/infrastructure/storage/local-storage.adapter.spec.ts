@@ -54,7 +54,8 @@ describe('LocalStorageAdapter (STORAGE_DRIVER=local)', () => {
     await almacen.upload('a/dos.pdf', Buffer.from('2'), 'application/pdf');
     const [k, exp, sig] = parametros(await almacen.presignedDownloadUrl('a/uno.pdf'));
 
-    expect(await almacen.abrir(k, exp, `${sig.slice(0, -1)}A`)).toBeNull();
+    // Se cambia el último carácter por otro distinto: con uno fijo, a veces la firma quedaba igual
+    expect(await almacen.abrir(k, exp, `${sig.slice(0, -1)}${sig.endsWith('A') ? 'B' : 'A'}`)).toBeNull();
     expect(await almacen.abrir('a/dos.pdf', exp, sig)).toBeNull();
     expect(await almacen.abrir(k, String(Number(exp) + 60), sig)).toBeNull();
 

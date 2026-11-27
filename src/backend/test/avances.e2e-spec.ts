@@ -286,6 +286,28 @@ describe('Avances con evidencia (e2e, SGP-82)', () => {
       await request(http()).delete(`${base()}/avances/${id}`).set(bearer('lucia')).expect(204);
     });
 
+    it('SGP-96: la bandeja del Administrador junta los enviados, del más antiguo al más reciente', async () => {
+      const primero = await enviado(7);
+      const segundo = await enviado(8);
+      const bandeja = (await request(http()).get('/api/avances/revision').set(bearer('admin')).expect(200)).body as Array<{ id: string; estado: string; proyecto: { id: string; codigo: string }; evidencias: unknown[] }>;
+      expect(bandeja.every((a) => a.estado === 'ENVIADO')).toBe(true);
+      const ids_ = bandeja.map((a) => a.id);
+      expect(ids_.indexOf(primero)).toBeLessThan(ids_.indexOf(segundo));
+      const item = bandeja.find((a) => a.id === primero)!;
+      expect(item.proyecto).toEqual(expect.objectContaining({ id: ids.proyecto, codigo }));
+      expect(item.evidencias).toHaveLength(1);
+
+      await request(http()).patch(`${base()}/avances/${primero}/aprobar`).set(bearer('admin')).expect(200);
+      const despues = (await request(http()).get('/api/avances/revision').set(bearer('admin')).expect(200)).body as Array<{ id: string }>;
+      expect(despues.some((a) => a.id === primero)).toBe(false);
+      expect(despues.some((a) => a.id === segundo)).toBe(true);
+    });
+
+    it('SGP-96: la bandeja es solo del Administrador', async () => {
+      await request(http()).get('/api/avances/revision').set(bearer('supervisor')).expect(403);
+      await request(http()).get('/api/avances/revision').set(bearer('lucia')).expect(403);
+    });
+
     it('CP-18: la técnica y el Supervisor no aprueban ni observan (403)', async () => {
       const id = await enviado();
       for (const quien of ['lucia', 'supervisor'] as const) {

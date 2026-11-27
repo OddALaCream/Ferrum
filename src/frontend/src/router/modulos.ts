@@ -30,6 +30,15 @@ export const MODULOS: readonly Modulo[] = [
     component: () => import('@/views/Proyectos/ProyectosListView.vue'),
   },
   {
+    name: 'revision',
+    path: 'revision',
+    titulo: 'Revisión de avances',
+    descripcion: 'Avances enviados por los técnicos, con su evidencia, para aprobarlos u observarlos.',
+    icono: 'pi pi-inbox',
+    roles: ['administrador'],
+    component: () => import('@/views/Revision/BandejaRevisionView.vue'),
+  },
+  {
     name: 'cronograma',
     path: 'cronograma',
     titulo: 'Cronograma y Actividades',

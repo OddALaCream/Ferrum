@@ -23,13 +23,16 @@ import {
   type Avance,
   type EstadoAvance,
 } from '@/api/avances';
+import AccionesRevision from '@/components/revision/AccionesRevision.vue';
 import { mensajeDeError } from '@/utils/errores';
 import { formatoFecha, formatoNumero } from '@/utils/formato';
+import { abrirEnPestanaNueva } from '@/utils/pestana';
 
 /**
  * SGP-82: avances de un indicador o de una actividad.
  * El técnico responsable registra el avance (queda en borrador), adjunta sus evidencias y lo envía a revisión.
  * El Administrador y el Supervisor ven los avances ya enviados, con sus evidencias.
+ * SGP-96: el Administrador también los aprueba u observa desde aquí.
  */
 export interface ObjetivoAvance {
   tipo: 'IOV' | 'ACTIVIDAD';
@@ -47,8 +50,11 @@ const props = defineProps<{
   puedeRegistrar: boolean;
   /** Inicio del proyecto: la fecha de corte no puede ser anterior. */
   inicioProyecto: string;
+  /** Administrador, con el proyecto abierto: aprueba u observa los avances enviados. */
+  puedeRevisar?: boolean;
 }>();
 const visible = defineModel<boolean>('visible', { required: true });
+const emit = defineEmits<{ revisado: [avance: Avance] }>();
 
 const toast = useToast();
 const confirm = useConfirm();
@@ -163,14 +169,9 @@ async function adjuntar(a: Avance, evento: Event) {
 }
 
 async function abrirEvidencia(a: Avance, evidenciaId: string) {
-  // La pestaña se abre antes de pedir el enlace para que el navegador no la bloquee
-  const pestana = window.open('', '_blank');
   try {
-    const url = await urlEvidencia(props.proyectoId, a.id, evidenciaId);
-    if (pestana) pestana.location.href = url;
-    else window.location.href = url;
+    await abrirEnPestanaNueva(() => urlEvidencia(props.proyectoId, a.id, evidenciaId));
   } catch (e) {
-    pestana?.close();
     toast.add({ severity: 'error', summary: 'No se pudo abrir la evidencia', detail: mensajeDeError(e), life: 6000 });
   }
 }
@@ -217,6 +218,17 @@ function pedirEliminar(a: Avance) {
     },
   });
 }
+
+/** SGP-96: el avance revisado se actualiza en la lista y el marco lógico recalcula sus %. */
+function revisado(a: Avance) {
+  actualizar(a);
+  emit('revisado', a);
+}
+
+const revisionTexto = (a: Avance) =>
+  a.revisadoPor && a.revisadoAt && (a.estado === 'APROBADO' || a.estado === 'OBSERVADO')
+    ? `${a.estado === 'APROBADO' ? 'Aprobado' : 'Observado'} por ${a.revisadoPor.nombre} el ${formatoFecha(a.revisadoAt)}`
+    : null;
 
 const valorTexto = (a: Avance) =>
   a.valorReportado === null ? null : `${formatoNumero(a.valorReportado)} ${a.objetivo.unidad ?? ''}`.trim();
@@ -409,6 +421,13 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
         >
           <span class="font-medium">Observación:</span> {{ a.observacion }}
         </p>
+        <p
+          v-if="revisionTexto(a)"
+          class="mt-1.5 text-xs text-slate-500"
+          data-test="avance-revision"
+        >
+          {{ revisionTexto(a) }}
+        </p>
 
         <!-- Evidencias -->
         <div class="mt-3">
@@ -469,6 +488,15 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
             >
           </label>
         </div>
+
+        <!-- Revisión del Administrador (SGP-96) -->
+        <AccionesRevision
+          v-if="puedeRevisar && a.estado === 'ENVIADO'"
+          class="mt-3 border-t border-slate-100 pt-3"
+          :proyecto-id="proyectoId"
+          :avance-id="a.id"
+          @revisado="revisado"
+        />
 
         <!-- Acciones -->
         <div

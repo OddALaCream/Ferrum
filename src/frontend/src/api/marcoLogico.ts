@@ -79,7 +79,16 @@ export interface Resultado {
 export interface ArbolMarcoLogico {
   /** COMPLETO: todo el marco lógico. MIS_ACTIVIDADES: el Técnico solo recibe las actividades que tiene a su cargo. */
   alcance: 'COMPLETO' | 'MIS_ACTIVIDADES';
-  proyecto: { id: string; codigo: string; nombre: string; estado: string; fechaInicio: string; fechaFin: string };
+  proyecto: {
+    id: string;
+    codigo: string;
+    nombre: string;
+    estado: string;
+    fechaInicio: string;
+    fechaFin: string;
+    /** SGP-95: % de cumplimiento según los avances aprobados de sus indicadores. */
+    cumplimientoPct: number;
+  };
   resultados: Resultado[];
 }
 

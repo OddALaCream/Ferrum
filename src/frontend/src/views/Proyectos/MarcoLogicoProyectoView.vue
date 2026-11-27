@@ -191,7 +191,7 @@ watch(() => props.id, () => cargar(), { immediate: true });
           {{ formatoFecha(arbol.proyecto.fechaInicio) }} – {{ formatoFecha(arbol.proyecto.fechaFin) }}
         </p>
 
-        <dl class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <dl class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <div class="rounded-lg bg-slate-50 p-3">
             <dt class="text-xs text-slate-500">
               Objetivos
@@ -241,16 +241,36 @@ watch(() => props.id, () => cargar(), { immediate: true });
               {{ totales.retrasadas }}
             </dd>
           </div>
+          <div
+            class="col-span-2 rounded-lg bg-violet-50 p-3 ring-1 ring-inset ring-violet-200 sm:col-span-1"
+            data-test="cumplimiento-proyecto"
+          >
+            <dt
+              class="text-xs text-violet-800"
+              title="Según los avances aprobados de los indicadores (I.O.V.)"
+            >
+              Cumplimiento
+            </dt>
+            <dd class="mt-1">
+              <span class="text-xl font-semibold text-slate-800">{{ Math.round(arbol.proyecto.cumplimientoPct ?? 0) }}%</span>
+              <BarraAvance
+                class="mt-1"
+                :pct="arbol.proyecto.cumplimientoPct ?? 0"
+                :tono="(arbol.proyecto.cumplimientoPct ?? 0) >= 100 ? 'completado' : 'normal'"
+                etiqueta="Cumplimiento del proyecto"
+              />
+            </dd>
+          </div>
           <div class="col-span-2 rounded-lg bg-slate-50 p-3 sm:col-span-1 lg:col-span-1">
             <dt class="text-xs text-slate-500">
-              {{ soloMias ? 'Mi avance' : 'Avance general' }}
+              {{ soloMias ? 'Mi avance' : 'Avance de actividades' }}
             </dt>
             <dd class="mt-1">
               <span class="text-xl font-semibold text-slate-800">{{ Math.round(totales.avance) }}%</span>
               <BarraAvance
                 class="mt-1"
                 :pct="totales.avance"
-                etiqueta="Avance general del proyecto"
+                etiqueta="Avance de las actividades del proyecto"
               />
             </dd>
           </div>
