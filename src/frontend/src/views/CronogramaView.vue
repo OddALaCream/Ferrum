@@ -7,6 +7,8 @@ import { obtenerEquipo, type TecnicoProyecto } from '@/api/equipo';
 import { obtenerMarcoLogico, type ArbolMarcoLogico } from '@/api/marcoLogico';
 import { listarProyectos, type ProyectoResumen } from '@/api/proyectos';
 import ActividadItem from '@/components/marco-logico/ActividadItem.vue';
+import AvancesDialog, { type ObjetivoAvance } from '@/components/marco-logico/AvancesDialog.vue';
+import HistorialDialog from '@/components/marco-logico/HistorialDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { mensajeDeError } from '@/utils/errores';
 import { formatoFecha } from '@/utils/formato';
@@ -27,14 +29,67 @@ const nombres = computed(() => new Map(equipo.value.map((t) => [t.id, t.nombre])
 const abierto = computed(() => arbol.value?.proyecto.estado !== 'CERRADO');
 const puedeOperar = (responsableId: string | null) => abierto.value &&
   (auth.role === 'administrador' || (auth.role === 'tecnico' && responsableId === auth.usuario?.id));
-const dia = (f: string) => Date.parse(`${f}T00:00:00Z`) / 86400000;
-function barra(inicio: string, fin: string) {
+/**
+ * La franja de cada actividad es su PERÍODO dentro del proyecto (dónde cae en el calendario), no su avance:
+ * el avance es el relleno oscuro dentro de la franja, con su % al lado. La línea vertical marca hoy.
+ */
+const dia = (f: string) => Date.parse(`${f.slice(0, 10)}T00:00:00Z`) / 86400000;
+const total = () => {
   const p = arbol.value!.proyecto;
-  const total = Math.max(1, dia(p.fechaFin) - dia(p.fechaInicio) + 1);
+  return Math.max(1, dia(p.fechaFin) - dia(p.fechaInicio) + 1);
+};
+/** Posición (0–100 %) de una fecha en la línea del proyecto. */
+const posicion = (f: string) => Math.min(100, Math.max(0, (dia(f) - dia(arbol.value!.proyecto.fechaInicio)) / total() * 100));
+function barra(inicio: string, fin: string) {
   return {
-    marginLeft: `${Math.max(0, (dia(inicio) - dia(p.fechaInicio)) / total * 100)}%`,
-    width: `${Math.max(0.5, (dia(fin) - dia(inicio) + 1) / total * 100)}%`,
+    left: `${posicion(inicio)}%`,
+    width: `${Math.max(0.8, (dia(fin) - dia(inicio) + 1) / total() * 100)}%`,
   };
+}
+/** Hoy en Bolivia (AAAA-MM-DD). */
+const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz' }).format(new Date());
+const hoyEnProyecto = computed(() => {
+  const p = arbol.value?.proyecto;
+  return p && hoy >= p.fechaInicio && hoy <= p.fechaFin ? posicion(hoy) : null;
+});
+/** Inicio de cada mes dentro del proyecto, para las marcas de la línea de tiempo. */
+const meses = computed(() => {
+  const p = arbol.value?.proyecto;
+  if (!p) return [];
+  const [a0, m0] = p.fechaInicio.split('-').map(Number);
+  const marcas: Array<{ fecha: string; etiqueta: string; left: number }> = [];
+  for (let a = a0, m = m0 + 1; ; m++) {
+    if (m > 12) { m = 1; a++; }
+    const fecha = `${a}-${String(m).padStart(2, '0')}-01`;
+    if (fecha > p.fechaFin) break;
+    const etiqueta = new Intl.DateTimeFormat('es-BO', { month: 'short' }).format(new Date(a, m - 1, 1)).replace('.', '').toLowerCase();
+    marcas.push({ fecha, etiqueta: m === 1 ? `${etiqueta} ${a}` : etiqueta, left: posicion(fecha) });
+  }
+  return marcas;
+});
+const tono = (a: { estadoEfectivo: string; estado: string }) =>
+  a.estadoEfectivo === 'RETRASADA'
+    ? { franja: 'bg-red-100 ring-red-300', relleno: 'bg-red-500', texto: 'text-red-700' }
+    : a.estado === 'COMPLETADA'
+      ? { franja: 'bg-green-100 ring-green-300', relleno: 'bg-green-500', texto: 'text-green-700' }
+      : { franja: 'bg-violet-100 ring-violet-300', relleno: 'bg-violet-500', texto: 'text-slate-700' };
+
+/** Los botones «Avances» e «Historial» de cada actividad abren sus diálogos también aquí. */
+const dialogoAvances = ref(false);
+const objetivoAvances = ref<ObjetivoAvance | null>(null);
+const puedeRegistrarAvances = ref(false);
+const dialogoHistorial = ref(false);
+const objetivoHistorial = ref<{ tipo: 'IOV' | 'ACTIVIDAD'; id: string; codigo: string } | null>(null);
+const puedeRegistrar = (responsableId: string | null) =>
+  abierto.value && auth.role === 'tecnico' && !!responsableId && responsableId === auth.usuario?.id;
+function abrirAvances(a: { id: string; codigo: string; nombre: string; responsableId: string | null }) {
+  objetivoAvances.value = { tipo: 'ACTIVIDAD', id: a.id, codigo: a.codigo, nombre: a.nombre };
+  puedeRegistrarAvances.value = puedeRegistrar(a.responsableId);
+  dialogoAvances.value = true;
+}
+function abrirHistorial(a: { id: string; codigo: string }) {
+  objetivoHistorial.value = { tipo: 'ACTIVIDAD', id: a.id, codigo: a.codigo };
+  dialogoHistorial.value = true;
 }
 async function cargarProyectos() {
   cargandoProyectos.value = true;
@@ -151,6 +206,36 @@ onMounted(cargarProyectos);
           <span>{{ formatoFecha(arbol.proyecto.fechaInicio) }}</span>
           <span>{{ formatoFecha(arbol.proyecto.fechaFin) }}</span>
         </div>
+        <!-- Meses del proyecto y la marca de hoy -->
+        <div
+          v-if="actividades.length"
+          class="relative mt-1 h-9 border-b border-slate-200 text-[11px] text-slate-400"
+          aria-hidden="true"
+          data-test="eje-meses"
+        >
+          <span
+            v-for="m in meses"
+            :key="m.fecha"
+            class="absolute bottom-0.5 -translate-x-1/2"
+            :style="{ left: `${m.left}%` }"
+          >{{ m.etiqueta }}</span>
+          <span
+            v-if="hoyEnProyecto !== null"
+            class="absolute top-0 -translate-x-1/2 rounded bg-slate-700 px-1 text-[10px] font-medium text-white"
+            :style="{ left: `${hoyEnProyecto}%` }"
+          >Hoy</span>
+        </div>
+        <p
+          v-if="actividades.length"
+          class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500"
+          data-test="leyenda"
+        >
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-6 rounded-sm bg-violet-100 ring-1 ring-inset ring-violet-300" />Período de la actividad</span>
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-6 rounded-sm bg-violet-500" />Avance logrado</span>
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block h-3 w-px bg-slate-700" />Hoy</span>
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-sm bg-red-500" />Retrasada</span>
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-sm bg-green-500" />Completada</span>
+        </p>
         <p
           v-if="!actividades.length"
           class="mt-4 text-sm text-slate-500"
@@ -169,17 +254,39 @@ onMounted(cargarProyectos);
             <p class="text-sm text-slate-700">
               {{ a.resultadoCodigo }} · {{ a.codigo }} · {{ a.nombre }}
             </p>
-            <p class="text-xs text-slate-500">
-              {{ formatoFecha(a.fechaInicio) }} – {{ formatoFecha(a.fechaFin) }}
+            <p class="flex flex-wrap gap-x-3 text-xs text-slate-500">
+              <span>{{ formatoFecha(a.fechaInicio) }} – {{ formatoFecha(a.fechaFin) }}</span>
+              <span
+                :class="['font-medium', tono(a).texto]"
+                data-test="avance-cronograma"
+              >{{ Math.round(a.cumplimientoPct) }} % de avance{{ a.estadoEfectivo === 'RETRASADA' ? ' · retrasada' : a.estado === 'COMPLETADA' ? ' · completada' : '' }}</span>
             </p>
             <div
-              class="mt-1 h-2 overflow-hidden rounded bg-slate-100"
+              class="relative mt-1 h-3 rounded bg-slate-50"
               aria-hidden="true"
             >
+              <span
+                v-for="m in meses"
+                :key="m.fecha"
+                class="absolute inset-y-0 w-px bg-slate-200"
+                :style="{ left: `${m.left}%` }"
+              />
               <div
-                class="h-full rounded"
-                :class="a.estadoEfectivo === 'RETRASADA' ? 'bg-red-400' : a.estado === 'COMPLETADA' ? 'bg-green-500' : 'bg-violet-500'"
+                :class="['absolute inset-y-0 overflow-hidden rounded ring-1 ring-inset', tono(a).franja]"
                 :style="barra(a.fechaInicio, a.fechaFin)"
+                :title="`${formatoFecha(a.fechaInicio)} – ${formatoFecha(a.fechaFin)} · ${Math.round(a.cumplimientoPct)} % de avance`"
+                data-test="franja"
+              >
+                <div
+                  :class="['h-full', tono(a).relleno]"
+                  :style="{ width: `${Math.min(100, Math.max(0, a.cumplimientoPct))}%` }"
+                  data-test="relleno"
+                />
+              </div>
+              <span
+                v-if="hoyEnProyecto !== null"
+                class="absolute -inset-y-1 w-px bg-slate-700"
+                :style="{ left: `${hoyEnProyecto}%` }"
               />
             </div>
           </li>
@@ -195,7 +302,25 @@ onMounted(cargarProyectos);
         :puede-operar="puedeOperar(a.responsableId)"
         :usuario-id="auth.usuario?.id"
         :puede-actualizar-asignadas="abierto && auth.role === 'tecnico'"
+        :puede-registrar-avance="puedeRegistrar(a.responsableId)"
         @cambio="cargar"
+        @avances="abrirAvances(a)"
+        @historial="abrirHistorial(a)"
+      />
+      <AvancesDialog
+        v-if="objetivoAvances"
+        v-model:visible="dialogoAvances"
+        :proyecto-id="arbol.proyecto.id"
+        :objetivo="objetivoAvances"
+        :puede-registrar="puedeRegistrarAvances"
+        :puede-revisar="auth.role === 'administrador' && abierto"
+        :inicio-proyecto="arbol.proyecto.fechaInicio"
+        @revisado="cargar"
+      />
+      <HistorialDialog
+        v-model:visible="dialogoHistorial"
+        :proyecto-id="arbol.proyecto.id"
+        :objetivo="objetivoHistorial"
       />
     </template>
   </div>
