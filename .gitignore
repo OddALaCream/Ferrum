@@ -36,3 +36,6 @@ npm-debug.log*
 # Archivos comprimidos sueltos
 *.zip
 *.rar
+
+# Evidencias subidas en desarrollo (STORAGE_DRIVER=local)
+src/backend/almacen/

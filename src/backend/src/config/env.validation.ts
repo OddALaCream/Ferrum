@@ -2,6 +2,7 @@ import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -42,12 +44,16 @@ export class EnvironmentVariables {
   @IsString() JWT_ACCESS_TTL: string = '15m';
   @IsString() JWT_REFRESH_TTL: string = '7d';
 
-  // Almacenamiento S3-compatible (ADR-003)
-  @IsString() @IsNotEmpty() S3_ENDPOINT: string;
+  // Almacenamiento de evidencias (ADR-003): 'local' guarda en una carpeta; 's3' usa MinIO u otro S3
+  @IsIn(['local', 's3']) STORAGE_DRIVER: 'local' | 's3' = 'local';
+  @IsString() @IsNotEmpty() STORAGE_DIR: string = './almacen';
+
+  // Solo obligatorias con STORAGE_DRIVER=s3
+  @ValidateIf((o: EnvironmentVariables) => o.STORAGE_DRIVER === 's3') @IsString() @IsNotEmpty() S3_ENDPOINT?: string;
   @IsString() S3_REGION: string = 'us-east-1';
-  @IsString() @IsNotEmpty() S3_ACCESS_KEY: string;
-  @IsString() @IsNotEmpty() S3_SECRET_KEY: string;
-  @IsString() @IsNotEmpty() S3_BUCKET: string;
+  @ValidateIf((o: EnvironmentVariables) => o.STORAGE_DRIVER === 's3') @IsString() @IsNotEmpty() S3_ACCESS_KEY?: string;
+  @ValidateIf((o: EnvironmentVariables) => o.STORAGE_DRIVER === 's3') @IsString() @IsNotEmpty() S3_SECRET_KEY?: string;
+  @ValidateIf((o: EnvironmentVariables) => o.STORAGE_DRIVER === 's3') @IsString() @IsNotEmpty() S3_BUCKET?: string;
   @Transform(toBool) @IsBoolean() S3_FORCE_PATH_STYLE: boolean = true;
 
   // Correo SMTP (RF-33, RF-35)

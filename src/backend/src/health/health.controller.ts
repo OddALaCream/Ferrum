@@ -25,7 +25,7 @@ export class HealthController {
     return this.health.check([() => this.db.pingCheck('database')]);
   }
 
-  /** Readiness completo: base de datos, almacenamiento (MinIO) y SMTP. */
+  /** Readiness completo: base de datos, almacenamiento (carpeta local o MinIO) y SMTP. */
   @Get('ready')
   @HealthCheck()
   ready() {
