@@ -20,7 +20,7 @@ import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { AlcanceProyecto } from '../proyectos/guards/alcance-proyecto.guard';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import { AvancesService } from './avances.service';
-import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
+import { AnularEvidenciaDto, CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
 import { SubidaEvidenciaInterceptor } from './subida-evidencia.interceptor';
 import type { ArchivoSubido } from './utils/archivo';
 
@@ -92,6 +92,26 @@ export class AvancesController {
     return this.avances.subirEvidencia(proyectoId, avanceId, archivo, usuario);
   }
 
+  /**
+   * SGP-136: el autor corrige una evidencia ya enviada subiendo una nueva versión (avance observado).
+   * La anterior queda en el historial.
+   */
+  @Roles(RolUsuario.TECNICO)
+  @AlcanceProyecto('proyectoId')
+  @Post(':avanceId/evidencias/:evidenciaId/versiones')
+  @UseInterceptors(SubidaEvidenciaInterceptor)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', required: ['archivo'], properties: { archivo: { type: 'string', format: 'binary' } } } })
+  subirVersion(
+    @Param('proyectoId', uuid) proyectoId: string,
+    @Param('avanceId', uuid) avanceId: string,
+    @Param('evidenciaId', uuid) evidenciaId: string,
+    @UploadedFile() archivo: ArchivoSubido | undefined,
+    @UsuarioActual() usuario: UsuarioAutenticado,
+  ) {
+    return this.avances.subirVersion(proyectoId, avanceId, evidenciaId, archivo, usuario);
+  }
+
   @Roles(RolUsuario.TECNICO)
   @AlcanceProyecto('proyectoId')
   @Delete(':avanceId/evidencias/:evidenciaId')
@@ -154,5 +174,22 @@ export class AvancesController {
     @UsuarioActual() usuario: UsuarioAutenticado,
   ) {
     return this.avances.observar(proyectoId, avanceId, dto, usuario);
+  }
+
+  /**
+   * SGP-135 / CP-19: el Administrador anula una evidencia de un avance enviado, con motivo.
+   * El archivo original se conserva y la acción queda en la bitácora.
+   */
+  @Roles(RolUsuario.ADMINISTRADOR)
+  @AlcanceProyecto('proyectoId')
+  @Patch(':avanceId/evidencias/:evidenciaId/anular')
+  anularEvidencia(
+    @Param('proyectoId', uuid) proyectoId: string,
+    @Param('avanceId', uuid) avanceId: string,
+    @Param('evidenciaId', uuid) evidenciaId: string,
+    @Body() dto: AnularEvidenciaDto,
+    @UsuarioActual() usuario: UsuarioAutenticado,
+  ) {
+    return this.avances.anularEvidencia(proyectoId, avanceId, evidenciaId, dto, usuario);
   }
 }

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
 import { FechaIso } from '../../marco-logico/dto/fecha';
 
 const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || undefined : value);
@@ -58,6 +58,16 @@ export class ListarAvancesDto {
   @IsOptional()
   @IsUUID('all', { message: 'actividadId debe ser un UUID' })
   actividadId?: string;
+}
+
+/** SGP-135 / CP-19: anular una evidencia exige explicar por qué. */
+export class AnularEvidenciaDto {
+  @Transform(recortar)
+  @IsNotEmpty({ message: 'Escribe el motivo de la anulación.' })
+  @IsString()
+  @MinLength(5, { message: 'El motivo debe explicar la anulación (al menos 5 caracteres).' })
+  @MaxLength(1000, { message: 'El motivo admite como máximo 1000 caracteres' })
+  motivo!: string;
 }
 
 /** CP-27: para observar un avance hace falta decir qué corregir. */

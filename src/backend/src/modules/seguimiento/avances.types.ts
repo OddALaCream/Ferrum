@@ -2,13 +2,19 @@ import type { EstadoAvance } from './entities/avance.entity';
 
 export interface EvidenciaVista {
   id: string;
+  /** SGP-136: número de versión y la evidencia que corrige (null en la primera). */
   version: number;
+  reemplazaA: string | null;
+  /** false si ya hay una versión más nueva: queda en el historial. */
+  vigente: boolean;
   nombreOriginal: string;
   mime: string;
   tamanoBytes: number;
   sha256: string;
   subidoPorId: string;
   createdAt: string;
+  /** SGP-135: si el Administrador la anuló, cuándo, quién y por qué. El archivo se sigue pudiendo abrir. */
+  anulacion: { at: string; por: { id: string; nombre: string }; motivo: string } | null;
 }
 
 /** Un avance con lo que lo identifica (indicador o actividad) y sus evidencias. */

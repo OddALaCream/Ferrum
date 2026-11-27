@@ -1,7 +1,10 @@
 import type { ObjectLiteral } from 'typeorm';
 
-/** Acciones que se registran en `audit_log.accion`. */
-export const ACCIONES_AUDITORIA = ['CREAR', 'ACTUALIZAR', 'ELIMINAR'] as const;
+/**
+ * Acciones que se registran en `audit_log.accion`. Las tres primeras las anota el subscriber;
+ * ANULAR la registra el servicio que anula una evidencia (SGP-135), para que se lea como lo que es.
+ */
+export const ACCIONES_AUDITORIA = ['CREAR', 'ACTUALIZAR', 'ELIMINAR', 'ANULAR'] as const;
 export type AccionAuditoria = (typeof ACCIONES_AUDITORIA)[number];
 
 /** Lo mínimo que se usa de ColumnMetadata / EntityMetadata de TypeORM (facilita las pruebas). */

@@ -7,6 +7,7 @@ export const ACCIONES: Record<string, { label: string; clases: string; icono: st
   CREAR: { label: 'Creación', clases: '!bg-emerald-50 !text-emerald-700', icono: 'pi pi-plus' },
   ACTUALIZAR: { label: 'Modificación', clases: '!bg-sky-50 !text-sky-700', icono: 'pi pi-pencil' },
   ELIMINAR: { label: 'Eliminación', clases: '!bg-red-50 !text-red-700', icono: 'pi pi-trash' },
+  ANULAR: { label: 'Anulación', clases: '!bg-amber-50 !text-amber-800', icono: 'pi pi-ban' },
 };
 
 const ENTIDADES: Record<string, string> = {

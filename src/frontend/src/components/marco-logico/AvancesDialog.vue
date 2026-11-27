@@ -14,19 +14,20 @@ import {
   eliminarAvance,
   eliminarEvidencia,
   enviarAvance,
+  evidenciasValidas,
   EXTENSIONES_ADMITIDAS,
-  formatoTamano,
   listarAvances,
   motivoArchivoInvalido,
   subirEvidencia,
-  urlEvidencia,
+  subirVersion,
   type Avance,
   type EstadoAvance,
+  type Evidencia,
 } from '@/api/avances';
 import AccionesRevision from '@/components/revision/AccionesRevision.vue';
+import ListaEvidencias from './ListaEvidencias.vue';
 import { mensajeDeError } from '@/utils/errores';
 import { formatoFecha, formatoNumero } from '@/utils/formato';
-import { abrirEnPestanaNueva } from '@/utils/pestana';
 
 /**
  * SGP-82: avances de un indicador o de una actividad.
@@ -64,6 +65,7 @@ const cargando = ref(false);
 const errorCarga = ref<string | null>(null);
 const trabajando = ref<string | null>(null);
 const subiendo = ref<string | null>(null);
+const versionando = ref<string | null>(null);
 
 const hoy = (() => {
   const d = new Date();
@@ -168,12 +170,33 @@ async function adjuntar(a: Avance, evento: Event) {
   }
 }
 
-async function abrirEvidencia(a: Avance, evidenciaId: string) {
-  try {
-    await abrirEnPestanaNueva(() => urlEvidencia(props.proyectoId, a.id, evidenciaId));
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'No se pudo abrir la evidencia', detail: mensajeDeError(e), life: 6000 });
+/** SGP-136: sube la versión corregida; la anterior queda en el historial como reemplazada. */
+async function nuevaVersion(a: Avance, evidenciaId: string, archivo: File) {
+  const motivo = motivoArchivoInvalido(archivo);
+  if (motivo) {
+    toast.add({ severity: 'warn', summary: 'Archivo no admitido', detail: motivo, life: 7000 });
+    return;
   }
+  versionando.value = evidenciaId;
+  try {
+    const nueva = await subirVersion(props.proyectoId, a.id, evidenciaId, archivo);
+    const actual = avances.value.find((x) => x.id === a.id)!;
+    actualizar({
+      ...actual,
+      evidencias: [...actual.evidencias.map((e) => (e.id === evidenciaId ? { ...e, vigente: false } : e)), nueva],
+    });
+    toast.add({ severity: 'success', summary: `Versión ${nueva.version} subida`, detail: 'La anterior queda en el historial.', life: 4000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: `No se pudo subir "${archivo.name}"`, detail: mensajeDeError(e), life: 7000 });
+  } finally {
+    versionando.value = null;
+  }
+}
+
+/** SGP-135: la evidencia anulada se reemplaza en la lista por su versión con la anulación. */
+function evidenciaAnulada(a: Avance, ev: Evidencia) {
+  const actual = avances.value.find((x) => x.id === a.id)!;
+  actualizar({ ...actual, evidencias: actual.evidencias.map((e) => (e.id === ev.id ? ev : e)) });
 }
 
 async function quitarEvidencia(a: Avance, evidenciaId: string) {
@@ -232,7 +255,6 @@ const revisionTexto = (a: Avance) =>
 
 const valorTexto = (a: Avance) =>
   a.valorReportado === null ? null : `${formatoNumero(a.valorReportado)} ${a.objetivo.unidad ?? ''}`.trim();
-const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file-pdf' : 'pi pi-image');
 </script>
 
 <template>
@@ -431,41 +453,43 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
 
         <!-- Evidencias -->
         <div class="mt-3">
-          <p class="mb-1.5 text-xs font-medium text-slate-600">
-            Evidencias ({{ a.evidencias.length }})
-          </p>
-          <ul class="space-y-1">
-            <li
-              v-for="e in a.evidencias"
-              :key="e.id"
-              class="flex items-center gap-2 text-sm"
-              data-test="evidencia"
+          <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <p class="text-xs font-medium text-slate-600">
+              Evidencias ({{ a.evidencias.filter((e) => e.vigente).length }})
+            </p>
+            <!-- RN-08 (SGP-134): lo enviado no se toca -->
+            <span
+              v-if="a.estado !== 'BORRADOR' && a.evidencias.length"
+              class="inline-flex items-center gap-1 text-xs text-slate-500"
+              title="Las evidencias de un avance enviado no se pueden quitar ni modificar."
+              data-test="evidencias-bloqueadas"
             >
-              <i :class="[iconoArchivo(e.mime), 'text-slate-400']" />
-              <button
-                type="button"
-                class="min-w-0 truncate text-left text-violet-700 hover:underline"
-                :title="`Abrir ${e.nombreOriginal}`"
-                @click="abrirEvidencia(a, e.id)"
-              >
-                {{ e.nombreOriginal }}
-              </button>
-              <span class="shrink-0 text-xs text-slate-400">{{ formatoTamano(e.tamanoBytes) }}</span>
-              <Button
-                v-if="puedeRegistrar && a.estado === 'BORRADOR'"
-                icon="pi pi-times"
-                severity="secondary"
-                text
-                rounded
-                size="small"
-                class="ml-auto"
-                :loading="trabajando === e.id"
-                :aria-label="`Quitar ${e.nombreOriginal}`"
-                data-test="quitar-evidencia"
-                @click="quitarEvidencia(a, e.id)"
-              />
-            </li>
-          </ul>
+              <i
+                class="pi pi-lock text-[10px]"
+                aria-hidden="true"
+              />Enviadas: no se pueden quitar ni modificar
+            </span>
+          </div>
+          <ListaEvidencias
+            :proyecto-id="proyectoId"
+            :avance-id="a.id"
+            :evidencias="a.evidencias"
+            :puede-quitar="puedeRegistrar && a.estado === 'BORRADOR'"
+            :quitando-id="trabajando"
+            :puede-anular="puedeRevisar && a.estado !== 'BORRADOR'"
+            :puede-versionar="puedeRegistrar && a.estado === 'OBSERVADO'"
+            :versionando-id="versionando"
+            @quitar="(id) => quitarEvidencia(a, id)"
+            @anulada="(ev) => evidenciaAnulada(a, ev)"
+            @nueva-version="(id, archivo) => nuevaVersion(a, id, archivo)"
+          />
+          <p
+            v-if="puedeRegistrar && a.estado === 'OBSERVADO' && a.evidencias.length"
+            class="mt-1.5 text-xs text-slate-500"
+            data-test="ayuda-version"
+          >
+            Para corregir una evidencia, sube una nueva versión: la anterior queda en el historial.
+          </p>
 
           <label
             v-if="editable(a)"
@@ -476,7 +500,13 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
             data-test="adjuntar"
           >
             <i :class="subiendo === a.id ? 'pi pi-spin pi-spinner' : 'pi pi-paperclip'" />
-            {{ subiendo === a.id ? 'Subiendo…' : 'Adjuntar evidencia (PDF, JPG, PNG o WEBP, hasta 25 MB)' }}
+            {{
+              subiendo === a.id
+                ? 'Subiendo…'
+                : a.estado === 'OBSERVADO'
+                  ? 'Adjuntar otra evidencia (PDF, JPG, PNG o WEBP, hasta 25 MB)'
+                  : 'Adjuntar evidencia (PDF, JPG, PNG o WEBP, hasta 25 MB)'
+            }}
             <input
               type="file"
               class="sr-only"
@@ -495,6 +525,7 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
           class="mt-3 border-t border-slate-100 pt-3"
           :proyecto-id="proyectoId"
           :avance-id="a.id"
+          :puede-aprobar="evidenciasValidas(a).length > 0"
           @revisado="revisado"
         />
 
@@ -504,11 +535,11 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
           class="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3"
         >
           <span
-            v-if="a.evidencias.length === 0"
+            v-if="evidenciasValidas(a).length === 0"
             class="mr-auto text-xs text-amber-700"
             data-test="falta-evidencia"
           >
-            Adjunta al menos una evidencia para poder enviarlo.
+            {{ a.evidencias.length ? 'Sus evidencias están anuladas: adjunta una válida para reenviarlo.' : 'Adjunta al menos una evidencia para poder enviarlo.' }}
           </span>
           <Button
             v-if="a.estado === 'BORRADOR'"
@@ -524,7 +555,7 @@ const iconoArchivo = (mime: string) => (mime === 'application/pdf' ? 'pi pi-file
             :label="a.estado === 'OBSERVADO' ? 'Reenviar a revisión' : 'Enviar a revisión'"
             icon="pi pi-send"
             size="small"
-            :disabled="a.evidencias.length === 0"
+            :disabled="evidenciasValidas(a).length === 0"
             :loading="trabajando === a.id"
             data-test="enviar-avance"
             @click="enviarARevision(a)"

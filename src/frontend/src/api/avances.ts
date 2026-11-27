@@ -4,13 +4,19 @@ export type EstadoAvance = 'BORRADOR' | 'ENVIADO' | 'APROBADO' | 'OBSERVADO' | '
 
 export interface Evidencia {
   id: string;
+  /** SGP-136: número de versión y la evidencia que corrige (null en la primera). */
   version: number;
+  reemplazaA: string | null;
+  /** false si ya hay una versión más nueva: queda en el historial. */
+  vigente: boolean;
   nombreOriginal: string;
   mime: string;
   tamanoBytes: number;
   sha256: string;
   subidoPorId: string;
   createdAt: string;
+  /** SGP-135: si el Administrador la anuló, cuándo, quién y por qué. El archivo se sigue pudiendo abrir. */
+  anulacion: { at: string; por: { id: string; nombre: string }; motivo: string } | null;
 }
 
 export interface Avance {
@@ -119,6 +125,25 @@ export async function aprobarAvance(proyectoId: string, avanceId: string): Promi
 /** SGP-94: el Administrador observa un avance enviado; vuelve al técnico con la observación. */
 export async function observarAvance(proyectoId: string, avanceId: string, observacion: string): Promise<Avance> {
   const { data } = await http.patch<Avance>(`${base(proyectoId)}/${avanceId}/observar`, { observacion });
+  return data;
+}
+
+/** SGP-135 / CP-19: el Administrador anula una evidencia con motivo; el archivo original se conserva. */
+export async function anularEvidencia(proyectoId: string, avanceId: string, evidenciaId: string, motivo: string): Promise<Evidencia> {
+  const { data } = await http.patch<Evidencia>(`${base(proyectoId)}/${avanceId}/evidencias/${evidenciaId}/anular`, { motivo });
+  return data;
+}
+
+/** Evidencias que todavía sirven de prueba: ni anuladas ni reemplazadas por una versión más nueva. */
+export function evidenciasValidas(avance: Pick<Avance, 'evidencias'>): Evidencia[] {
+  return avance.evidencias.filter((e) => !e.anulacion && e.vigente);
+}
+
+/** SGP-136: corrige una evidencia ya enviada (avance observado) con una nueva versión. */
+export async function subirVersion(proyectoId: string, avanceId: string, evidenciaId: string, archivo: File): Promise<Evidencia> {
+  const datos = new FormData();
+  datos.append('archivo', archivo);
+  const { data } = await http.post<Evidencia>(`${base(proyectoId)}/${avanceId}/evidencias/${evidenciaId}/versiones`, datos, { timeout: 120_000 });
   return data;
 }
 

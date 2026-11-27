@@ -392,6 +392,204 @@ describe('Avances con evidencia (e2e, SGP-82)', () => {
     });
   });
 
+  describe('SGP-135: el Administrador anula una evidencia con motivo (CP-19)', () => {
+    const conEvidencia = async () => {
+      const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 4, fechaCorte: hoy }).expect(201)).body.id as string;
+      const evidencia = (await subir(id, PNG, 'acta.png').expect(201)).body.id as string;
+      await request(http()).post(`${base()}/avances/${id}/enviar`).set(bearer('lucia')).expect(200);
+      return { id, evidencia };
+    };
+    const anular = (avanceId: string, evidenciaId: string, cuerpo: object, quien: keyof typeof tokens = 'admin') =>
+      request(http()).patch(`${base()}/avances/${avanceId}/evidencias/${evidenciaId}/anular`).set(bearer(quien)).send(cuerpo);
+
+    it('CP-19: queda Anulada con su motivo, el archivo original se conserva y la acción queda en la bitácora', async () => {
+      const a = await conEvidencia();
+      const [{ storage_key }] = await ds.query(`SELECT storage_key FROM evidencias WHERE id = $1`, [a.evidencia]);
+
+      const r = (await anular(a.id, a.evidencia, { motivo: 'La foto corresponde a otra comunidad.' }).expect(200)).body;
+      expect(r.anulacion).toEqual(expect.objectContaining({ motivo: 'La foto corresponde a otra comunidad.', por: expect.objectContaining({ nombre: expect.any(String) }) }));
+
+      // el archivo sigue en el almacenamiento y se puede abrir
+      expect(almacen.objetos.has(storage_key)).toBe(true);
+      await request(http()).get(`${base()}/avances/${a.id}/evidencias/${a.evidencia}/descarga`).set(bearer('supervisor')).expect(200);
+      // la técnica la ve anulada en su avance
+      const [avance] = (await request(http()).get(`${base()}/avances?iovId=${ids.iov}`).set(bearer('lucia')).expect(200)).body.filter((x: { id: string }) => x.id === a.id);
+      expect(avance.evidencias[0].anulacion.motivo).toBe('La foto corresponde a otra comunidad.');
+
+      const bitacora = await ds.query(
+        `SELECT accion, usuario_id, proyecto_id, valor_nuevo FROM audit_log WHERE entidad = 'evidencias' AND entidad_id = $1 ORDER BY id`,
+        [a.evidencia],
+      );
+      const anulacion = bitacora.find((b: { accion: string }) => b.accion === 'ANULAR');
+      expect(anulacion).toBeDefined();
+      expect(anulacion.proyecto_id).toBe(ids.proyecto);
+      expect(anulacion.valor_nuevo.motivo_anulacion).toBe('La foto corresponde a otra comunidad.');
+      const [{ id: adminId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'admin@serfamilia.test'`);
+      expect(anulacion.usuario_id).toBe(adminId);
+      // y no se anotó además como una modificación genérica
+      expect(bitacora.some((b: { accion: string }) => b.accion === 'ACTUALIZAR')).toBe(false);
+    });
+
+    it('sin motivo, o con uno que no explica nada, se rechaza', async () => {
+      const a = await conEvidencia();
+      await anular(a.id, a.evidencia, {}).expect(400);
+      await anular(a.id, a.evidencia, { motivo: '   ' }).expect(400);
+      await anular(a.id, a.evidencia, { motivo: 'mal' }).expect(400);
+    });
+
+    it('solo el Administrador anula: la técnica y el Supervisor reciben 403', async () => {
+      const a = await conEvidencia();
+      await anular(a.id, a.evidencia, { motivo: 'No corresponde.' }, 'lucia').expect(403);
+      await anular(a.id, a.evidencia, { motivo: 'No corresponde.' }, 'supervisor').expect(403);
+    });
+
+    it('una evidencia anulada no se anula dos veces', async () => {
+      const a = await conEvidencia();
+      await anular(a.id, a.evidencia, { motivo: 'Documento ilegible.' }).expect(200);
+      await anular(a.id, a.evidencia, { motivo: 'Otra vez.' }).expect(409);
+    });
+
+    it('sin evidencias válidas no se aprueba; la técnica adjunta una nueva, reenvía y recién se aprueba', async () => {
+      const a = await conEvidencia();
+      await anular(a.id, a.evidencia, { motivo: 'Documento ilegible.' }).expect(200);
+      const r = await request(http()).patch(`${base()}/avances/${a.id}/aprobar`).set(bearer('admin')).expect(422);
+      expect(r.body.detail).toContain('anuladas');
+
+      await request(http()).patch(`${base()}/avances/${a.id}/observar`).set(bearer('admin')).send({ observacion: 'Sube un acta legible.' }).expect(200);
+      const sinValida = await request(http()).post(`${base()}/avances/${a.id}/enviar`).set(bearer('lucia')).expect(422);
+      expect(sinValida.body.detail).toContain('anuladas');
+      await subir(a.id, PNG, 'acta-legible.png').expect(201);
+      await request(http()).post(`${base()}/avances/${a.id}/enviar`).set(bearer('lucia')).expect(200);
+      await request(http()).patch(`${base()}/avances/${a.id}/aprobar`).set(bearer('admin')).expect(200);
+    });
+
+    it('la base solo admite anular una vez, sin tocar nada más, y nunca en un borrador', async () => {
+      const a = await conEvidencia();
+      const [{ id: adminId }] = await ds.query(`SELECT id FROM usuarios WHERE email = 'admin@serfamilia.test'`);
+      // anular y de paso cambiar el nombre: no
+      await expect(
+        ds.query(`UPDATE evidencias SET anulada_at = now(), anulada_por = $2, motivo_anulacion = 'x', nombre_original = 'otro.png' WHERE id = $1`, [a.evidencia, adminId]),
+      ).rejects.toThrow('no se pueden modificar');
+      // anular sin motivo: no
+      await expect(ds.query(`UPDATE evidencias SET anulada_at = now(), anulada_por = $2 WHERE id = $1`, [a.evidencia, adminId])).rejects.toThrow('ck_evidencia_anulacion');
+
+      await anular(a.id, a.evidencia, { motivo: 'Documento ilegible.' }).expect(200);
+      await expect(ds.query(`UPDATE evidencias SET motivo_anulacion = 'otro motivo' WHERE id = $1`, [a.evidencia])).rejects.toThrow('ya está anulada');
+
+      // en un borrador no se anula: se quita
+      const borrador = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 1, fechaCorte: hoy }).expect(201)).body.id as string;
+      const ev = (await subir(borrador, PNG, 'b.png').expect(201)).body.id as string;
+      await expect(
+        ds.query(`UPDATE evidencias SET anulada_at = now(), anulada_por = $2, motivo_anulacion = 'x' WHERE id = $1`, [ev, adminId]),
+      ).rejects.toThrow('no se pueden modificar');
+      await anular(borrador, ev, { motivo: 'No corresponde.' }).expect(404);
+      await request(http()).delete(`${base()}/avances/${borrador}`).set(bearer('lucia')).expect(204);
+    });
+  });
+
+  describe('SGP-136: para corregir una evidencia se sube una nueva versión; la anterior queda en el historial', () => {
+    const PNG2 = Buffer.concat([PNG, Buffer.from('v2')]);
+    /** Avance enviado con una evidencia y luego observado. */
+    const observado = async () => {
+      const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 6, fechaCorte: hoy }).expect(201)).body.id as string;
+      const evidencia = (await subir(id, PNG, 'acta.png').expect(201)).body.id as string;
+      await request(http()).post(`${base()}/avances/${id}/enviar`).set(bearer('lucia')).expect(200);
+      await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer('admin')).send({ observacion: 'El acta no se lee.' }).expect(200);
+      return { id, evidencia };
+    };
+    const version = (avanceId: string, evidenciaId: string, contenido: Buffer, nombre: string, quien: keyof typeof tokens = 'lucia') =>
+      request(http()).post(`${base()}/avances/${avanceId}/evidencias/${evidenciaId}/versiones`).set(bearer(quien)).attach('archivo', contenido, nombre);
+    const delAvance = async (avanceId: string) =>
+      (await request(http()).get(`${base()}/avances?iovId=${ids.iov}`).set(bearer('lucia')).expect(200)).body.find((x: { id: string }) => x.id === avanceId);
+
+    it('la técnica sube la versión 2; la 1 sigue visible como reemplazada, con su archivo', async () => {
+      const a = await observado();
+      const [{ storage_key: claveV1 }] = await ds.query(`SELECT storage_key FROM evidencias WHERE id = $1`, [a.evidencia]);
+
+      const v2 = (await version(a.id, a.evidencia, PNG2, 'acta-legible.png').expect(201)).body;
+      expect(v2).toEqual(expect.objectContaining({ version: 2, reemplazaA: a.evidencia, vigente: true, nombreOriginal: 'acta-legible.png' }));
+
+      const avance = await delAvance(a.id);
+      expect(avance.evidencias).toHaveLength(2);
+      const v1 = avance.evidencias.find((e: { id: string }) => e.id === a.evidencia);
+      expect(v1).toEqual(expect.objectContaining({ version: 1, vigente: false }));
+      expect(almacen.objetos.has(claveV1)).toBe(true);
+      // la versión anterior se sigue pudiendo abrir
+      await request(http()).get(`${base()}/avances/${a.id}/evidencias/${a.evidencia}/descarga`).set(bearer('admin')).expect(200);
+
+      await request(http()).post(`${base()}/avances/${a.id}/enviar`).set(bearer('lucia')).expect(200);
+      await request(http()).patch(`${base()}/avances/${a.id}/aprobar`).set(bearer('admin')).expect(200);
+    });
+
+    it('una evidencia anulada se corrige con una nueva versión; la anulada queda en el historial', async () => {
+      const a = await observado();
+      await request(http()).patch(`${base()}/avances/${a.id}/evidencias/${a.evidencia}/anular`).set(bearer('admin')).send({ motivo: 'Documento ilegible.' }).expect(200);
+      await request(http()).post(`${base()}/avances/${a.id}/enviar`).set(bearer('lucia')).expect(422);
+
+      await version(a.id, a.evidencia, PNG2, 'acta-legible.png').expect(201);
+      const v1 = (await delAvance(a.id)).evidencias.find((e: { id: string }) => e.id === a.evidencia);
+      expect(v1.anulacion.motivo).toBe('Documento ilegible.');
+      expect(v1.vigente).toBe(false);
+      await request(http()).post(`${base()}/avances/${a.id}/enviar`).set(bearer('lucia')).expect(200);
+    });
+
+    it('si la versión nueva se anula, la anterior no vuelve a valer: hace falta otra versión', async () => {
+      const a = await observado();
+      const v2 = (await version(a.id, a.evidencia, PNG2, 'v2.png').expect(201)).body.id as string;
+      await request(http()).post(`${base()}/avances/${a.id}/enviar`).set(bearer('lucia')).expect(200);
+      await request(http()).patch(`${base()}/avances/${a.id}/evidencias/${v2}/anular`).set(bearer('admin')).send({ motivo: 'Tampoco se lee.' }).expect(200);
+      await request(http()).patch(`${base()}/avances/${a.id}/aprobar`).set(bearer('admin')).expect(422);
+      await request(http()).patch(`${base()}/avances/${a.id}/observar`).set(bearer('admin')).send({ observacion: 'Sube otra versión.' }).expect(200);
+      const v3 = (await version(a.id, v2, Buffer.concat([PNG, Buffer.from('v3')]), 'v3.png').expect(201)).body;
+      expect(v3.version).toBe(3);
+    });
+
+    it('solo se corrige la versión vigente, y una sola vez', async () => {
+      const a = await observado();
+      await version(a.id, a.evidencia, PNG2, 'v2.png').expect(201);
+      const r = await version(a.id, a.evidencia, PNG2, 'otra-v2.png').expect(409);
+      expect(r.body.detail).toContain('versión más nueva');
+    });
+
+    it('solo con el avance observado: en borrador, enviado o aprobado no hay versiones', async () => {
+      const borrador = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 2, fechaCorte: hoy }).expect(201)).body.id as string;
+      const ev = (await subir(borrador, PNG, 'a.png').expect(201)).body.id as string;
+      const r = await version(borrador, ev, PNG2, 'b.png').expect(422);
+      expect(r.body.detail).toContain('quita la evidencia');
+
+      await request(http()).post(`${base()}/avances/${borrador}/enviar`).set(bearer('lucia')).expect(200);
+      await version(borrador, ev, PNG2, 'b.png').expect(422);
+      await request(http()).patch(`${base()}/avances/${borrador}/aprobar`).set(bearer('admin')).expect(200);
+      await version(borrador, ev, PNG2, 'b.png').expect(422);
+    });
+
+    it('solo la autora: el Administrador y el Supervisor reciben 403; una evidencia de otro avance, 404', async () => {
+      const a = await observado();
+      const b = await observado();
+      await version(a.id, a.evidencia, PNG2, 'v2.png', 'admin').expect(403);
+      await version(a.id, a.evidencia, PNG2, 'v2.png', 'supervisor').expect(403);
+      await version(a.id, b.evidencia, PNG2, 'v2.png').expect(404);
+    });
+
+    it('la versión también pasa el control de tipo y tamaño', async () => {
+      const a = await observado();
+      await version(a.id, a.evidencia, Buffer.from([0x50, 0x4b, 0x03, 0x04, 1]), 'informe.pdf').expect(422);
+    });
+
+    it('la base exige el número siguiente, un solo reemplazo y el avance observado', async () => {
+      const a = await observado();
+      const insertar = (version: number, reemplaza: string, clave: string) =>
+        ds.query(
+          `INSERT INTO evidencias (avance_id, version, reemplaza_a, storage_key, nombre_original, mime, tamano_bytes, sha256, subido_por)
+           VALUES ($1, $2, $3, $4, 'x.png', 'image/png', 10, repeat('b', 64), $5)`,
+          [a.id, version, reemplaza, `avances/${a.id}/${clave}`, ids.lucia],
+        );
+      await expect(insertar(5, a.evidencia, 'salto.png')).rejects.toThrow('debe ser la 2');
+      await insertar(2, a.evidencia, 'v2.png');
+      await expect(insertar(2, a.evidencia, 'v2-bis.png')).rejects.toThrow('uq_evidencia_reemplazo');
+    });
+  });
+
   describe('Borradores y proyectos cerrados', () => {
     it('un borrador se elimina con sus evidencias', async () => {
       const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 3, fechaCorte: hoy }).expect(201)).body.id;

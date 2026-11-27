@@ -15,11 +15,13 @@ import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { Actividad } from '../marco-logico/entities/actividad.entity';
 import { Iov } from '../marco-logico/entities/iov.entity';
 import { esFechaValida, hoyIso } from '../marco-logico/utils/estado-efectivo';
+import { codigoPg } from '../marco-logico/utils/errores-pg';
 import { Proyecto } from '../proyectos/entities/proyecto.entity';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import type { AvanceVista, EvidenciaVista } from './avances.types';
 import { CumplimientoService } from './cumplimiento.service';
-import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
+import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AnularEvidenciaDto, CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
 import { Avance, type EstadoAvance } from './entities/avance.entity';
 import { Evidencia } from './entities/evidencia.entity';
 import { detectarTipo, motivoRechazo, nombreLimpio, sha256, TIPOS_ADMITIDOS, type ArchivoSubido } from './utils/archivo';
@@ -48,6 +50,7 @@ export class AvancesService {
     private readonly ds: DataSource,
     private readonly storage: StorageAdapter,
     private readonly cumplimiento: CumplimientoService,
+    private readonly auditoria: AuditoriaService,
     @InjectRepository(Avance) private readonly avances: Repository<Avance>,
     @InjectRepository(Evidencia) private readonly evidencias: Repository<Evidencia>,
     @InjectRepository(Proyecto) private readonly proyectos: Repository<Proyecto>,
@@ -112,6 +115,8 @@ export class AvancesService {
       where: { avanceId: In(filas.map((f) => String(f.id))) },
       order: { createdAt: 'ASC' },
     });
+    const anuladores = await this.nombres(evidencias.map((e) => e.anuladaPorId));
+    const reemplazadas = new Set(evidencias.map((e) => e.reemplazaA).filter((id): id is string => !!id));
     return filas.map((f) => ({
       id: String(f.id),
       proyecto: { id: String(f.proyecto_id), codigo: String(f.proyecto_codigo), nombre: String(f.proyecto_nombre) },
@@ -133,8 +138,16 @@ export class AvancesService {
       revisadoAt: f.revisado_at ? new Date(f.revisado_at as string).toISOString() : null,
       createdAt: new Date(f.created_at as string).toISOString(),
       updatedAt: new Date(f.updated_at as string).toISOString(),
-      evidencias: evidencias.filter((e) => e.avanceId === f.id).map((e) => this.evidenciaVista(e)),
+      evidencias: evidencias.filter((e) => e.avanceId === f.id).map((e) => this.evidenciaVista(e, anuladores, reemplazadas)),
     }));
+  }
+
+  /** Nombre de cada usuario, para mostrar quién anuló una evidencia. */
+  private async nombres(ids: Array<string | null>): Promise<Map<string, string>> {
+    const unicos = [...new Set(ids.filter((id): id is string => !!id))];
+    if (!unicos.length) return new Map();
+    const filas: Array<{ id: string; nombre: string }> = await this.ds.query(`SELECT id, nombre FROM usuarios WHERE id = ANY($1)`, [unicos]);
+    return new Map(filas.map((u) => [u.id, u.nombre]));
   }
 
   /** URL temporal (5 minutos) para descargar una evidencia. */
@@ -217,25 +230,67 @@ export class AvancesService {
     await this.avanceEditable(proyectoId, avanceId, usuario);
     const motivo = motivoRechazo(archivo);
     if (motivo) throw new UnprocessableEntityException(motivo);
-    const cuantas = await this.evidencias.count({ where: { avanceId } });
-    if (cuantas >= MAX_EVIDENCIAS) {
+    // Las versiones anteriores quedan en el historial y no cuentan para el máximo
+    if ((await this.evidenciasVigentes(avanceId)) >= MAX_EVIDENCIAS) {
       throw new UnprocessableEntityException(`Un avance admite como máximo ${MAX_EVIDENCIAS} evidencias.`);
     }
+    return this.guardarArchivo(avanceId, archivo!, usuario, { version: 1, reemplazaA: null });
+  }
 
-    const mime = detectarTipo(archivo!.buffer)!;
+  /**
+   * SGP-136: para corregir una evidencia ya enviada, el autor sube una nueva versión mientras el avance
+   * está observado. La anterior no se toca: queda en el historial (y anulada, si el Administrador la anuló).
+   */
+  async subirVersion(
+    proyectoId: string,
+    avanceId: string,
+    evidenciaId: string,
+    archivo: ArchivoSubido | undefined,
+    usuario: UsuarioAutenticado,
+  ): Promise<EvidenciaVista> {
+    await this.proyectoAbierto(proyectoId);
+    const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
+    if (avance.estado !== 'OBSERVADO') {
+      throw new UnprocessableEntityException(
+        'Las versiones corrigen evidencias ya enviadas, con el avance observado. En un borrador, quita la evidencia y adjunta otra.',
+      );
+    }
+    const anterior = await this.evidencias.findOne({ where: { id: evidenciaId, avanceId } });
+    if (!anterior) throw new NotFoundException('La evidencia no existe.');
+    if (await this.evidencias.exists({ where: { reemplazaA: anterior.id } })) {
+      throw new ConflictException('Esta evidencia ya tiene una versión más nueva: corrige esa.');
+    }
+    const motivo = motivoRechazo(archivo);
+    if (motivo) throw new UnprocessableEntityException(motivo);
+    try {
+      return await this.guardarArchivo(avanceId, archivo!, usuario, { version: anterior.version + 1, reemplazaA: anterior.id });
+    } catch (e) {
+      // Dos subidas a la vez: el índice único deja pasar solo una
+      if (codigoPg(e) === '23505') throw new ConflictException('Esta evidencia ya tiene una versión más nueva: corrige esa.');
+      throw e;
+    }
+  }
+
+  /** Sube el archivo al almacenamiento y registra la evidencia; si la base la rechaza, borra el archivo. */
+  private async guardarArchivo(
+    avanceId: string,
+    archivo: ArchivoSubido,
+    usuario: UsuarioAutenticado,
+    origen: { version: number; reemplazaA: string | null },
+  ): Promise<EvidenciaVista> {
+    const mime = detectarTipo(archivo.buffer)!;
     const storageKey = `avances/${avanceId}/${randomUUID()}.${TIPOS_ADMITIDOS[mime].extension}`;
-    await this.storage.upload(storageKey, archivo!.buffer, mime);
+    await this.storage.upload(storageKey, archivo.buffer, mime);
     try {
       const evidencia = await this.evidencias.save(
         this.evidencias.create({
           avanceId,
-          version: 1,
-          reemplazaA: null,
+          ...origen,
           storageKey,
-          nombreOriginal: nombreLimpio(archivo!.originalname),
+          nombreOriginal: nombreLimpio(archivo.originalname),
           mime,
-          tamanoBytes: archivo!.size,
-          sha256: sha256(archivo!.buffer),
+          tamanoBytes: archivo.size,
+          sha256: sha256(archivo.buffer),
           subidoPorId: usuario.id,
         }),
       );
@@ -267,13 +322,16 @@ export class AvancesService {
 
   // ---------------------------------------------------------------- envío
 
-  /** CP-12: un avance sin evidencia no se puede enviar a revisión. */
+  /** CP-12: un avance sin evidencia válida (ni anulada ni reemplazada) no se puede enviar a revisión. */
   async enviar(proyectoId: string, avanceId: string, usuario: UsuarioAutenticado): Promise<AvanceVista> {
     await this.proyectoAbierto(proyectoId);
     const avance = await this.avanceEditable(proyectoId, avanceId, usuario);
-    const cuantas = await this.evidencias.count({ where: { avanceId } });
-    if (cuantas === 0) {
-      throw new UnprocessableEntityException('Adjunta al menos una evidencia (fuente de verificación) antes de enviar el avance a revisión.');
+    if ((await this.evidenciasValidas(avanceId)) === 0) {
+      throw new UnprocessableEntityException(
+        (await this.evidencias.count({ where: { avanceId } })) === 0
+          ? 'Adjunta al menos una evidencia (fuente de verificación) antes de enviar el avance a revisión.'
+          : 'Todas las evidencias de este avance están anuladas: adjunta una válida antes de reenviarlo.',
+      );
     }
     avance.estado = 'ENVIADO';
     avance.enviadoAt = new Date();
@@ -306,6 +364,11 @@ export class AvancesService {
     if (avance.estado !== 'ENVIADO') {
       throw new UnprocessableEntityException(`Solo se revisa un avance enviado; este está ${avance.estado.toLowerCase()}.`);
     }
+    if (estado === 'APROBADO' && (await this.evidenciasValidas(avance.id)) === 0) {
+      throw new UnprocessableEntityException(
+        'No se puede aprobar: todas sus evidencias están anuladas. Obsérvalo para que el técnico suba una válida.',
+      );
+    }
     const cambios: Partial<Avance> = { estado, revisadoPorId: usuario.id, revisadoAt: new Date() };
     if (observacion !== null) cambios.observacion = observacion;
     await this.ds.transaction(async (m) => {
@@ -316,6 +379,79 @@ export class AvancesService {
       if (estado === 'APROBADO' && avance.iovId) await this.cumplimiento.desdeIndicador(avance.iovId, m);
     });
     return this.vista(proyectoId, avance.id, usuario);
+  }
+
+  // ---------------------------------------------------------------- anulación (SGP-135)
+
+  /**
+   * CP-19: el Administrador anula una evidencia de un avance ya enviado, con motivo. No se borra nada:
+   * el archivo original se conserva y se sigue pudiendo abrir; la evidencia queda marcada como anulada
+   * y la acción se registra en la bitácora como ANULAR.
+   */
+  async anularEvidencia(
+    proyectoId: string,
+    avanceId: string,
+    evidenciaId: string,
+    dto: AnularEvidenciaDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<EvidenciaVista> {
+    await this.proyectoAbierto(proyectoId);
+    const avance = await this.avance(proyectoId, avanceId);
+    if (avance.estado === 'BORRADOR') throw new NotFoundException('El avance no existe.');
+    const evidencia = await this.evidencias.findOne({ where: { id: evidenciaId, avanceId } });
+    if (!evidencia) throw new NotFoundException('La evidencia no existe.');
+    if (evidencia.anuladaAt) throw new ConflictException('La evidencia ya está anulada.');
+
+    const ahora = new Date();
+    await this.ds.transaction(async (m) => {
+      // Consulta directa: así la bitácora anota ANULAR (con el motivo) y no una modificación genérica.
+      const [, filas] = await m.query(
+        `UPDATE evidencias SET anulada_at = $2, anulada_por = $3, motivo_anulacion = $4
+          WHERE id = $1 AND anulada_at IS NULL`,
+        [evidencia.id, ahora, usuario.id, dto.motivo],
+      );
+      if (!filas) throw new ConflictException('La evidencia acaba de ser anulada por otra persona.');
+      await this.auditoria.registrar(m, {
+        accion: 'ANULAR',
+        entidad: 'evidencias',
+        entidadId: evidencia.id,
+        proyectoId,
+        valorAnterior: { anulada_at: null, anulada_por: null, motivo_anulacion: null },
+        valorNuevo: {
+          avance_id: avance.id,
+          nombre_original: evidencia.nombreOriginal,
+          sha256: evidencia.sha256,
+          anulada_at: ahora.toISOString(),
+          anulada_por: usuario.id,
+          motivo_anulacion: dto.motivo,
+        },
+      });
+    });
+
+    const anulada = await this.evidencias.findOneOrFail({ where: { id: evidencia.id } });
+    const reemplazada = await this.evidencias.exists({ where: { reemplazaA: anulada.id } });
+    return this.evidenciaVista(anulada, await this.nombres([anulada.anuladaPorId]), new Set(reemplazada ? [anulada.id] : []));
+  }
+
+  /** Evidencias sin una versión más nueva (anuladas o no). */
+  private async evidenciasVigentes(avanceId: string): Promise<number> {
+    const [{ n }] = await this.ds.query(
+      `SELECT COUNT(*)::int AS n FROM evidencias e
+        WHERE e.avance_id = $1 AND NOT EXISTS (SELECT 1 FROM evidencias r WHERE r.reemplaza_a = e.id)`,
+      [avanceId],
+    );
+    return n;
+  }
+
+  /** Evidencias que todavía sirven de prueba: ni anuladas ni reemplazadas por una versión más nueva. */
+  private async evidenciasValidas(avanceId: string): Promise<number> {
+    const [{ n }] = await this.ds.query(
+      `SELECT COUNT(*)::int AS n FROM evidencias e
+        WHERE e.avance_id = $1 AND e.anulada_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM evidencias r WHERE r.reemplaza_a = e.id)`,
+      [avanceId],
+    );
+    return n;
   }
 
   // ---------------------------------------------------------------- reglas
@@ -399,16 +535,22 @@ export class AvancesService {
     return encontrado;
   }
 
-  private evidenciaVista(e: Evidencia): EvidenciaVista {
+  private evidenciaVista(e: Evidencia, nombres: Map<string, string> = new Map(), reemplazadas: Set<string> = new Set()): EvidenciaVista {
     return {
       id: e.id,
       version: e.version,
+      reemplazaA: e.reemplazaA,
+      vigente: !reemplazadas.has(e.id),
       nombreOriginal: e.nombreOriginal,
       mime: e.mime,
       tamanoBytes: Number(e.tamanoBytes),
       sha256: e.sha256,
       subidoPorId: e.subidoPorId,
       createdAt: e.createdAt.toISOString(),
+      anulacion:
+        e.anuladaAt && e.anuladaPorId
+          ? { at: e.anuladaAt.toISOString(), por: { id: e.anuladaPorId, nombre: nombres.get(e.anuladaPorId) ?? '' }, motivo: e.motivoAnulacion ?? '' }
+          : null,
     };
   }
 

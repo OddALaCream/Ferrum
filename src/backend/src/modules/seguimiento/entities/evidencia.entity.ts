@@ -3,7 +3,8 @@ import { Avance } from './avance.entity';
 
 /**
  * Archivo que prueba un avance (fuente de verificación). Tabla `evidencias`: inmutable en la base
- * (no se puede modificar; solo se borra mientras el avance está en borrador). El archivo vive en MinIO.
+ * (no se puede modificar; solo se borra mientras el avance está en borrador). El único cambio admitido es
+ * su anulación por el Administrador, con motivo (SGP-135); el archivo original se conserva.
  */
 @Entity({ name: 'evidencias' })
 export class Evidencia {
@@ -44,4 +45,13 @@ export class Evidencia {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  @Column({ name: 'anulada_at', type: 'timestamptz', nullable: true })
+  anuladaAt!: Date | null;
+
+  @Column({ name: 'anulada_por', type: 'uuid', nullable: true })
+  anuladaPorId!: string | null;
+
+  @Column({ name: 'motivo_anulacion', type: 'text', nullable: true })
+  motivoAnulacion!: string | null;
 }

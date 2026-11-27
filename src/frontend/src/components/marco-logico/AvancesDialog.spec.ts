@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
   eliminarEvidencia: vi.fn(),
   eliminarAvance: vi.fn(),
   urlEvidencia: vi.fn(),
+  anularEvidencia: vi.fn(),
+  subirVersion: vi.fn(),
 }));
 const { toastAdd, confirmRequire } = vi.hoisted(() => ({ toastAdd: vi.fn(), confirmRequire: vi.fn() }));
 vi.mock('@/api/avances', async (original) => ({ ...(await original<typeof import('@/api/avances')>()), ...api }));
@@ -19,7 +21,7 @@ vi.mock('primevue/usetoast', () => ({ useToast: () => ({ add: toastAdd }) }));
 vi.mock('primevue/useconfirm', () => ({ useConfirm: () => ({ require: confirmRequire }) }));
 
 const IOV = { tipo: 'IOV' as const, id: 'iov-12', codigo: 'I.O.V. 1.2', nombre: 'Beneficiarios con huerto', unidad: 'beneficiarios' };
-const EVIDENCIA = { id: 'e-1', version: 1, nombreOriginal: 'acta.pdf', mime: 'application/pdf', tamanoBytes: 3 * 1024 * 1024, sha256: 'a'.repeat(64), subidoPorId: 'u', createdAt: '2026-11-20T12:00:00Z' };
+const EVIDENCIA = { id: 'e-1', version: 1, nombreOriginal: 'acta.pdf', mime: 'application/pdf', tamanoBytes: 3 * 1024 * 1024, sha256: 'a'.repeat(64), subidoPorId: 'u', createdAt: '2026-11-20T12:00:00Z', anulacion: null, reemplazaA: null, vigente: true };
 
 function avance(cambios: Partial<Avance> = {}): Avance {
   return {
@@ -199,12 +201,102 @@ describe('AvancesDialog (SGP-82)', () => {
       expect(wrapper.get('[data-test="evidencias-bloqueadas"]').text()).toContain('no se pueden quitar ni modificar');
     });
 
-    it('OBSERVADO: lo enviado sigue bloqueado, pero puede adjuntar una evidencia corregida', async () => {
+    it('OBSERVADO: lo enviado sigue bloqueado, pero puede adjuntar otra evidencia', async () => {
       api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', observacion: 'Foto borrosa', evidencias: [EVIDENCIA] })]);
       const wrapper = await montar();
       expect(wrapper.find('[data-test="quitar-evidencia"]').exists()).toBe(false);
       expect(wrapper.find('[data-test="evidencias-bloqueadas"]').exists()).toBe(true);
-      expect(wrapper.get('[data-test="adjuntar"]').text()).toContain('Adjuntar evidencia corregida');
+      expect(wrapper.get('[data-test="adjuntar"]').text()).toContain('Adjuntar otra evidencia');
+    });
+  });
+
+  describe('Anulación de evidencias (SGP-135)', () => {
+    const ANULADA = { ...EVIDENCIA, anulacion: { at: '2026-11-22T12:00:00Z', por: { id: 'a', nombre: 'Andrea Quispe' }, motivo: 'Foto de otra comunidad' } };
+
+    it('el Administrador puede anular las evidencias de un avance enviado', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'ENVIADO', evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar(false, true);
+      expect(wrapper.find('[data-test="anular-evidencia"]').exists()).toBe(true);
+    });
+
+    it('el Supervisor y la técnica no ven el botón de anular', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'ENVIADO', evidencias: [EVIDENCIA] })]);
+      expect((await montar(false, false)).find('[data-test="anular-evidencia"]').exists()).toBe(false);
+      expect((await montar(true, false)).find('[data-test="anular-evidencia"]').exists()).toBe(false);
+    });
+
+    it('una anulada se ve tachada, con quién, cuándo y por qué, y sin botón de anular', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'ENVIADO', evidencias: [ANULADA] })]);
+      const wrapper = await montar(false, true);
+      expect(wrapper.find('[data-test="evidencia-anulada"]').exists()).toBe(true);
+      expect(wrapper.get('[data-test="motivo-anulacion"]').text()).toContain('Andrea Quispe');
+      expect(wrapper.get('[data-test="motivo-anulacion"]').text()).toContain('Foto de otra comunidad');
+      expect(wrapper.find('[data-test="anular-evidencia"]').exists()).toBe(false);
+    });
+
+    it('si todas sus evidencias están anuladas, la técnica no puede reenviarlo hasta adjuntar una válida', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', observacion: 'Sube otra', evidencias: [ANULADA] })]);
+      const wrapper = await montar();
+      expect(wrapper.get('[data-test="enviar-avance"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.get('[data-test="falta-evidencia"]').text()).toContain('anuladas');
+    });
+
+    it('al anular, la evidencia se actualiza en la lista', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'ENVIADO', evidencias: [EVIDENCIA] })]);
+      api.anularEvidencia.mockResolvedValue(ANULADA);
+      const wrapper = await montar(false, true);
+      await wrapper.get('[data-test="anular-evidencia"]').trigger('click');
+      await wrapper.get('[data-test="motivo"]').setValue('Foto de otra comunidad');
+      await wrapper.get('[data-test="evidencia"] form').trigger('submit');
+      await flushPromises();
+      expect(api.anularEvidencia).toHaveBeenCalledWith('p-1', 'av-1', 'e-1', 'Foto de otra comunidad');
+      expect(wrapper.find('[data-test="evidencia-anulada"]').exists()).toBe(true);
+    });
+  });
+
+  describe('Versiones de evidencias (SGP-136)', () => {
+    it('con el avance observado, la autora puede subir una nueva versión; en borrador o enviado, no', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', observacion: 'No se lee', evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar();
+      expect(wrapper.find('[data-test="nueva-version"]').exists()).toBe(true);
+      expect(wrapper.find('[data-test="ayuda-version"]').exists()).toBe(true);
+
+      for (const estado of ['BORRADOR', 'ENVIADO'] as const) {
+        api.listarAvances.mockResolvedValue([avance({ estado, evidencias: [EVIDENCIA] })]);
+        expect((await montar()).find('[data-test="nueva-version"]').exists()).toBe(false);
+      }
+      api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', evidencias: [EVIDENCIA] })]);
+      expect((await montar(false, true)).find('[data-test="nueva-version"]').exists()).toBe(false);
+    });
+
+    it('al subirla, queda como vigente y la anterior pasa al historial', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', observacion: 'No se lee', evidencias: [EVIDENCIA] })]);
+      api.subirVersion.mockResolvedValue({ ...EVIDENCIA, id: 'e-2', version: 2, reemplazaA: 'e-1', nombreOriginal: 'acta-legible.pdf' });
+      const wrapper = await montar();
+      const input = wrapper.get('[data-test="input-version"]');
+      Object.defineProperty(input.element, 'files', { value: [archivo('acta-legible.pdf', 'application/pdf', 1024)], configurable: true });
+      await input.trigger('change');
+      await flushPromises();
+
+      expect(api.subirVersion).toHaveBeenCalledWith('p-1', 'av-1', 'e-1', expect.any(File));
+      const filas = wrapper.findAll('[data-test="evidencia"]');
+      expect(filas).toHaveLength(1);
+      expect(filas[0].text()).toContain('acta-legible.pdf');
+      expect(filas[0].get('[data-test="version"]').text()).toBe('v2');
+      await wrapper.get('[data-test="ver-historial"]').trigger('click');
+      expect(wrapper.get('[data-test="historial"]').text()).toContain('acta.pdf');
+      expect(wrapper.find('[data-test="historial"] [data-test="reemplazada"]').exists()).toBe(true);
+    });
+
+    it('un archivo no admitido no se sube como versión', async () => {
+      api.listarAvances.mockResolvedValue([avance({ estado: 'OBSERVADO', evidencias: [EVIDENCIA] })]);
+      const wrapper = await montar();
+      const input = wrapper.get('[data-test="input-version"]');
+      Object.defineProperty(input.element, 'files', { value: [archivo('virus.exe', 'application/x-msdownload', 100)], configurable: true });
+      await input.trigger('change');
+      await flushPromises();
+      expect(api.subirVersion).not.toHaveBeenCalled();
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
     });
   });
 });
