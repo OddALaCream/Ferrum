@@ -23,6 +23,9 @@ export interface AvanceVista {
   estado: EstadoAvance;
   enviadoAt: string | null;
   observacion: string | null;
+  /** Quién lo aprobó u observó, y cuándo. */
+  revisadoPor: { id: string; nombre: string } | null;
+  revisadoAt: string | null;
   createdAt: string;
   updatedAt: string;
   evidencias: EvidenciaVista[];

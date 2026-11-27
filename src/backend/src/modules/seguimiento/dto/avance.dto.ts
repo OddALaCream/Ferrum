@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { FechaIso } from '../../marco-logico/dto/fecha';
 
 const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || undefined : value);
@@ -58,4 +58,14 @@ export class ListarAvancesDto {
   @IsOptional()
   @IsUUID('all', { message: 'actividadId debe ser un UUID' })
   actividadId?: string;
+}
+
+/** CP-27: para observar un avance hace falta decir qué corregir. */
+export class ObservarAvanceDto {
+  /** Qué debe corregir el técnico antes de reenviarlo. */
+  @Transform(recortar)
+  @IsNotEmpty({ message: 'Escribe la observación: el técnico necesita saber qué corregir.' })
+  @IsString()
+  @MaxLength(2000, { message: 'La observación admite como máximo 2000 caracteres' })
+  observacion!: string;
 }

@@ -20,7 +20,7 @@ import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { AlcanceProyecto } from '../proyectos/guards/alcance-proyecto.guard';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import { AvancesService } from './avances.service';
-import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto } from './dto/avance.dto';
+import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
 import { SubidaEvidenciaInterceptor } from './subida-evidencia.interceptor';
 import type { ArchivoSubido } from './utils/archivo';
 
@@ -129,5 +129,30 @@ export class AvancesController {
     @UsuarioActual() usuario: UsuarioAutenticado,
   ) {
     return this.avances.enviar(proyectoId, avanceId, usuario);
+  }
+
+  /** SGP-94: el Administrador aprueba un avance enviado. Técnico y Supervisor reciben 403 (CP-18). */
+  @Roles(RolUsuario.ADMINISTRADOR)
+  @AlcanceProyecto('proyectoId')
+  @Patch(':avanceId/aprobar')
+  aprobar(
+    @Param('proyectoId', uuid) proyectoId: string,
+    @Param('avanceId', uuid) avanceId: string,
+    @UsuarioActual() usuario: UsuarioAutenticado,
+  ) {
+    return this.avances.aprobar(proyectoId, avanceId, usuario);
+  }
+
+  /** SGP-94 / CP-27: el Administrador observa un avance enviado; la observación es obligatoria. */
+  @Roles(RolUsuario.ADMINISTRADOR)
+  @AlcanceProyecto('proyectoId')
+  @Patch(':avanceId/observar')
+  observar(
+    @Param('proyectoId', uuid) proyectoId: string,
+    @Param('avanceId', uuid) avanceId: string,
+    @Body() dto: ObservarAvanceDto,
+    @UsuarioActual() usuario: UsuarioAutenticado,
+  ) {
+    return this.avances.observar(proyectoId, avanceId, dto, usuario);
   }
 }

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -17,7 +18,7 @@ import { esFechaValida, hoyIso } from '../marco-logico/utils/estado-efectivo';
 import { Proyecto } from '../proyectos/entities/proyecto.entity';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import type { AvanceVista, EvidenciaVista } from './avances.types';
-import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto } from './dto/avance.dto';
+import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
 import { Avance, type EstadoAvance } from './entities/avance.entity';
 import { Evidencia } from './entities/evidencia.entity';
 import { detectarTipo, motivoRechazo, nombreLimpio, sha256, TIPOS_ADMITIDOS, type ArchivoSubido } from './utils/archivo';
@@ -71,6 +72,7 @@ export class AvancesService {
     const filas: Array<Record<string, unknown>> = await this.ds.query(
       `SELECT a.id, a.iov_id, a.actividad_id, a.autor_id, u.nombre AS autor_nombre, a.valor_reportado,
               to_char(a.fecha_corte, 'YYYY-MM-DD') AS fecha_corte, a.descripcion, a.estado, a.enviado_at, a.observacion,
+              a.revisado_por, rv.nombre AS revisor_nombre, a.revisado_at,
               a.created_at, a.updated_at,
               COALESCE(i.codigo, c.codigo) AS objetivo_codigo,
               COALESCE(i.descripcion, c.nombre) AS objetivo_nombre,
@@ -80,6 +82,7 @@ export class AvancesService {
          LEFT JOIN actividades c ON c.id = a.actividad_id
          JOIN resultados r       ON r.id = COALESCE(i.resultado_id, c.resultado_id)
          JOIN usuarios u         ON u.id = a.autor_id
+         LEFT JOIN usuarios rv   ON rv.id = a.revisado_por
         WHERE ${condiciones.join(' AND ')}
         ORDER BY a.fecha_corte DESC, a.created_at DESC`,
       params,
@@ -106,6 +109,8 @@ export class AvancesService {
       estado: f.estado as EstadoAvance,
       enviadoAt: f.enviado_at ? new Date(f.enviado_at as string).toISOString() : null,
       observacion: f.observacion === null ? null : String(f.observacion),
+      revisadoPor: f.revisado_por ? { id: String(f.revisado_por), nombre: String(f.revisor_nombre) } : null,
+      revisadoAt: f.revisado_at ? new Date(f.revisado_at as string).toISOString() : null,
       createdAt: new Date(f.created_at as string).toISOString(),
       updatedAt: new Date(f.updated_at as string).toISOString(),
       evidencias: evidencias.filter((e) => e.avanceId === f.id).map((e) => this.evidenciaVista(e)),
@@ -248,6 +253,39 @@ export class AvancesService {
     avance.estado = 'ENVIADO';
     avance.enviadoAt = new Date();
     await this.avances.save(avance);
+    return this.vista(proyectoId, avance.id, usuario);
+  }
+
+  // ---------------------------------------------------------------- revisión (SGP-94)
+
+  /** El Administrador aprueba un avance enviado: desde ahí cuenta para el cumplimiento. */
+  async aprobar(proyectoId: string, avanceId: string, usuario: UsuarioAutenticado): Promise<AvanceVista> {
+    return this.revisar(proyectoId, avanceId, usuario, 'APROBADO', null);
+  }
+
+  /** CP-27: el Administrador observa un avance enviado con un comentario; vuelve al técnico para corregirlo. */
+  async observar(proyectoId: string, avanceId: string, dto: ObservarAvanceDto, usuario: UsuarioAutenticado): Promise<AvanceVista> {
+    return this.revisar(proyectoId, avanceId, usuario, 'OBSERVADO', dto.observacion);
+  }
+
+  private async revisar(
+    proyectoId: string,
+    avanceId: string,
+    usuario: UsuarioAutenticado,
+    estado: 'APROBADO' | 'OBSERVADO',
+    observacion: string | null,
+  ): Promise<AvanceVista> {
+    await this.proyectoAbierto(proyectoId);
+    const avance = await this.avance(proyectoId, avanceId);
+    if (avance.estado === 'BORRADOR') throw new NotFoundException('El avance no existe.');
+    if (avance.estado !== 'ENVIADO') {
+      throw new UnprocessableEntityException(`Solo se revisa un avance enviado; este está ${avance.estado.toLowerCase()}.`);
+    }
+    const cambios: Partial<Avance> = { estado, revisadoPorId: usuario.id, revisadoAt: new Date() };
+    if (observacion !== null) cambios.observacion = observacion;
+    // Condición sobre el estado: si dos administradores revisan a la vez, solo uno gana.
+    const r = await this.avances.update({ id: avance.id, estado: 'ENVIADO' }, cambios);
+    if (!r.affected) throw new ConflictException('El avance acaba de ser revisado por otra persona. Actualiza la lista.');
     return this.vista(proyectoId, avance.id, usuario);
   }
 

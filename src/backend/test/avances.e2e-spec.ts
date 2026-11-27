@@ -235,6 +235,68 @@ describe('Avances con evidencia (e2e, SGP-82)', () => {
     });
   });
 
+  describe('SGP-94: el Administrador aprueba u observa', () => {
+    const enviado = async (valor = 10) => {
+      const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: valor, fechaCorte: hoy }).expect(201)).body.id as string;
+      await subir(id, PNG, 'acta.png').expect(201);
+      await request(http()).post(`${base()}/avances/${id}/enviar`).set(bearer('lucia')).expect(200);
+      return id;
+    };
+
+    it('CP-27: observar sin comentario se rechaza; con comentario queda Observado y vuelve a la técnica', async () => {
+      const id = await enviado();
+      const sin = await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer('admin')).send({ observacion: '   ' }).expect(400);
+      expect(JSON.stringify(sin.body)).toContain('observación');
+      await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer('admin')).send({}).expect(400);
+
+      const r = (await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer('admin')).send({ observacion: 'El acta no tiene firmas.' }).expect(200)).body;
+      expect(r.estado).toBe('OBSERVADO');
+      expect(r.observacion).toBe('El acta no tiene firmas.');
+      expect(r.revisadoPor.id).toBeTruthy();
+      expect(r.revisadoAt).toBeTruthy();
+
+      const suya = (await request(http()).get(`${base()}/avances?iovId=${ids.iov}`).set(bearer('lucia')).expect(200)).body.find((a: { id: string }) => a.id === id);
+      expect(suya.estado).toBe('OBSERVADO');
+      expect(suya.observacion).toBe('El acta no tiene firmas.');
+    });
+
+    it('Observado → la técnica corrige, adjunta y reenvía; el Administrador lo aprueba', async () => {
+      const id = await enviado();
+      await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer('admin')).send({ observacion: 'Falta la foto.' }).expect(200);
+      await request(http()).patch(`${base()}/avances/${id}`).set(bearer('lucia')).send({ valorReportado: 12 }).expect(200);
+      await subir(id, PNG, 'foto.png').expect(201);
+      expect((await request(http()).post(`${base()}/avances/${id}/enviar`).set(bearer('lucia')).expect(200)).body.estado).toBe('ENVIADO');
+
+      const r = (await request(http()).patch(`${base()}/avances/${id}/aprobar`).set(bearer('admin')).expect(200)).body;
+      expect(r.estado).toBe('APROBADO');
+      expect(r.valorReportado).toBe(12);
+    });
+
+    it('un aprobado ya no se revisa de nuevo ni se corrige', async () => {
+      const id = await enviado();
+      await request(http()).patch(`${base()}/avances/${id}/aprobar`).set(bearer('admin')).expect(200);
+      await request(http()).patch(`${base()}/avances/${id}/aprobar`).set(bearer('admin')).expect(422);
+      await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer('admin')).send({ observacion: 'tarde' }).expect(422);
+      await request(http()).patch(`${base()}/avances/${id}`).set(bearer('lucia')).send({ valorReportado: 99 }).expect(422);
+    });
+
+    it('un borrador no se revisa: para el Administrador no existe', async () => {
+      const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 1, fechaCorte: hoy }).expect(201)).body.id;
+      await request(http()).patch(`${base()}/avances/${id}/aprobar`).set(bearer('admin')).expect(404);
+      await request(http()).delete(`${base()}/avances/${id}`).set(bearer('lucia')).expect(204);
+    });
+
+    it('CP-18: la técnica y el Supervisor no aprueban ni observan (403)', async () => {
+      const id = await enviado();
+      for (const quien of ['lucia', 'supervisor'] as const) {
+        await request(http()).patch(`${base()}/avances/${id}/aprobar`).set(bearer(quien)).expect(403);
+        await request(http()).patch(`${base()}/avances/${id}/observar`).set(bearer(quien)).send({ observacion: 'x' }).expect(403);
+      }
+      const sigue = (await request(http()).get(`${base()}/avances`).set(bearer('admin')).expect(200)).body.find((a: { id: string }) => a.id === id);
+      expect(sigue.estado).toBe('ENVIADO');
+    });
+  });
+
   describe('Borradores y proyectos cerrados', () => {
     it('un borrador se elimina con sus evidencias', async () => {
       const id = (await request(http()).post(`${base()}/avances`).set(bearer('lucia')).send({ iovId: ids.iov, valorReportado: 3, fechaCorte: hoy }).expect(201)).body.id;
