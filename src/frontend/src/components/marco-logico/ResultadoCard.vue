@@ -6,6 +6,7 @@ import type { Resultado } from '@/api/marcoLogico';
 import { formatoNumero } from '@/utils/formato';
 import ActividadItem from './ActividadItem.vue';
 import AvancesDialog, { type ObjetivoAvance } from './AvancesDialog.vue';
+import HistorialDialog from './HistorialDialog.vue';
 import BarraAvance from './BarraAvance.vue';
 
 /** Un resultado esperado del marco lógico, con sus indicadores (I.O.V.) y sus actividades. */
@@ -52,6 +53,14 @@ function abrirAvances(objetivo: ObjetivoAvance, responsableId: string | null | u
   objetivoAvances.value = objetivo;
   registraAvances.value = puedeRegistrar(responsableId);
   dialogoAvances.value = true;
+}
+
+/** SGP-116: historial del indicador o de la actividad, para todos los roles. */
+const dialogoHistorial = ref(false);
+const objetivoHistorial = ref<{ tipo: 'IOV' | 'ACTIVIDAD'; id: string; codigo: string } | null>(null);
+function abrirHistorial(tipo: 'IOV' | 'ACTIVIDAD', id: string, codigo: string) {
+  objetivoHistorial.value = { tipo, id, codigo };
+  dialogoHistorial.value = true;
 }
 
 const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.estadoEfectivo === 'RETRASADA').length);
@@ -210,6 +219,16 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
                   data-test="ver-avances-iov"
                   @click="abrirAvances({ tipo: 'IOV', id: i.id, codigo: i.codigo, nombre: i.descripcion, unidad: i.unidad }, i.responsableId)"
                 />
+                <Button
+                  label="Historial"
+                  icon="pi pi-history"
+                  size="small"
+                  severity="secondary"
+                  text
+                  class="mt-1 whitespace-nowrap"
+                  data-test="ver-historial-iov"
+                  @click="abrirHistorial('IOV', i.id, i.codigo)"
+                />
               </td>
             </tr>
           </tbody>
@@ -261,6 +280,7 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
           :puede-registrar-avance="puedeRegistrar(a.responsableId)"
           @cambio="emit('cambio')"
           @avances="abrirAvances({ tipo: 'ACTIVIDAD', id: a.id, codigo: a.codigo, nombre: a.nombre }, a.responsableId)"
+          @historial="abrirHistorial('ACTIVIDAD', a.id, a.codigo)"
         />
       </div>
     </div>
@@ -273,6 +293,11 @@ const retrasadas = computed(() => props.resultado.actividades.filter((a) => a.es
       :inicio-proyecto="inicioProyecto"
       :puede-revisar="esAdministrador && !proyectoCerrado"
       @revisado="emit('cambio')"
+    />
+    <HistorialDialog
+      v-model:visible="dialogoHistorial"
+      :proyecto-id="proyectoId"
+      :objetivo="objetivoHistorial"
     />
   </section>
 </template>

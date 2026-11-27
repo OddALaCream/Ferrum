@@ -50,6 +50,17 @@ export class EditarAvanceDto {
   descripcion?: string;
 }
 
+/** SGP-116: historial de un indicador o de una actividad (uno de los dos). */
+export class HistorialDto {
+  @IsOptional()
+  @IsUUID('all', { message: 'iovId debe ser un UUID' })
+  iovId?: string;
+
+  @IsOptional()
+  @IsUUID('all', { message: 'actividadId debe ser un UUID' })
+  actividadId?: string;
+}
+
 export class ListarAvancesDto {
   @IsOptional()
   @IsUUID('all', { message: 'iovId debe ser un UUID' })

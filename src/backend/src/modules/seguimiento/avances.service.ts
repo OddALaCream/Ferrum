@@ -18,10 +18,11 @@ import { esFechaValida, hoyIso } from '../marco-logico/utils/estado-efectivo';
 import { codigoPg } from '../marco-logico/utils/errores-pg';
 import { Proyecto } from '../proyectos/entities/proyecto.entity';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
-import type { AvanceVista, EvidenciaVista } from './avances.types';
+import type { AvanceVista, EvidenciaVista, HistorialVista, ObjetivoHistorial } from './avances.types';
+import { eventosDeAvance, type RegistroBitacora } from './utils/historial';
 import { CumplimientoService } from './cumplimiento.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { AnularEvidenciaDto, CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
+import { AnularEvidenciaDto, CrearAvanceDto, EditarAvanceDto, HistorialDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
 import { Avance, type EstadoAvance } from './entities/avance.entity';
 import { Evidencia } from './entities/evidencia.entity';
 import { detectarTipo, motivoRechazo, nombreLimpio, sha256, TIPOS_ADMITIDOS, type ArchivoSubido } from './utils/archivo';
@@ -86,6 +87,79 @@ export class AvancesService {
       [],
       'a.enviado_at ASC NULLS LAST, a.created_at ASC',
     );
+  }
+
+  /**
+   * SGP-116 (CP-28): historial de un indicador o de una actividad. Todos los avances enviados en adelante,
+   * en orden cronológico, con su línea de tiempo (envíos, observaciones, aprobaciones, evidencias).
+   * El Técnico del proyecto ve los de todo el equipo, más sus propios borradores; los borradores ajenos, nunca.
+   */
+  async historial(proyectoId: string, filtros: HistorialDto, usuario: UsuarioAutenticado): Promise<HistorialVista> {
+    await this.proyecto(proyectoId);
+    if (!!filtros.iovId === !!filtros.actividadId) {
+      throw new BadRequestException('Indica el indicador (iovId) o la actividad (actividadId) del historial, uno de los dos.');
+    }
+    const objetivo = await this.objetivoHistorial(proyectoId, filtros);
+
+    const params: unknown[] = [proyectoId, objetivo.id];
+    const condiciones = ['r.proyecto_id = $1', objetivo.tipo === 'IOV' ? 'a.iov_id = $2' : 'a.actividad_id = $2'];
+    if (usuario.rol === RolUsuario.TECNICO) {
+      params.push(usuario.id);
+      condiciones.push(`(a.estado <> 'BORRADOR' OR a.autor_id = $3)`);
+    } else condiciones.push(`a.estado <> 'BORRADOR'`);
+    const avances = await this.consultar(condiciones, params, 'a.fecha_corte ASC, a.created_at ASC');
+    if (!avances.length) return { objetivo, avances: [] };
+
+    const filas: Array<{ entidad_id: string; accion: string; created_at: Date; usuario_id: string | null; valor_anterior: Record<string, unknown> | null; valor_nuevo: Record<string, unknown> | null }> =
+      await this.ds.query(
+        `SELECT entidad_id, accion, created_at, usuario_id, valor_anterior, valor_nuevo
+           FROM audit_log WHERE entidad = 'avances' AND entidad_id = ANY($1)
+          ORDER BY created_at, id`,
+        [avances.map((a) => a.id)],
+      );
+    const nombres = await this.nombres([...filas.map((f) => f.usuario_id), ...avances.flatMap((a) => a.evidencias.map((e) => e.subidoPorId))]);
+    for (const a of avances) {
+      nombres.set(a.autor.id, a.autor.nombre);
+      if (a.revisadoPor) nombres.set(a.revisadoPor.id, a.revisadoPor.nombre);
+    }
+    return {
+      objetivo,
+      avances: avances.map((a) => {
+        const registros: RegistroBitacora[] = filas
+          .filter((f) => f.entidad_id === a.id)
+          .map((f) => ({ accion: f.accion, fecha: f.created_at, usuarioId: f.usuario_id, anterior: f.valor_anterior, nuevo: f.valor_nuevo }));
+        return { ...a, eventos: eventosDeAvance(a, registros, nombres) };
+      }),
+    };
+  }
+
+  private async objetivoHistorial(proyectoId: string, filtros: HistorialDto): Promise<ObjetivoHistorial> {
+    if (filtros.iovId) {
+      const [i] = await this.ds.query(
+        `SELECT i.id, i.codigo, i.descripcion AS nombre, i.unidad, i.meta, i.cumplimiento_pct
+           FROM iov i JOIN resultados r ON r.id = i.resultado_id
+          WHERE i.id = $1 AND r.proyecto_id = $2`,
+        [filtros.iovId, proyectoId],
+      );
+      if (!i) throw new NotFoundException('El indicador no existe en este proyecto.');
+      return { tipo: 'IOV', id: i.id, codigo: i.codigo, nombre: i.nombre, unidad: i.unidad, meta: Number(i.meta), cumplimientoPct: Number(i.cumplimiento_pct) };
+    }
+    const [c] = await this.ds.query(
+      `SELECT c.id, c.codigo, c.nombre, c.unidad_meta, c.meta_cuantitativa, c.cumplimiento_pct
+         FROM actividades c JOIN resultados r ON r.id = c.resultado_id
+        WHERE c.id = $1 AND r.proyecto_id = $2`,
+      [filtros.actividadId, proyectoId],
+    );
+    if (!c) throw new NotFoundException('La actividad no existe en este proyecto.');
+    return {
+      tipo: 'ACTIVIDAD',
+      id: c.id,
+      codigo: c.codigo,
+      nombre: c.nombre,
+      unidad: c.unidad_meta,
+      meta: c.meta_cuantitativa === null ? null : Number(c.meta_cuantitativa),
+      cumplimientoPct: Number(c.cumplimiento_pct),
+    };
   }
 
   private async consultar(condiciones: string[], params: unknown[], orden: string): Promise<AvanceVista[]> {
@@ -372,9 +446,11 @@ export class AvancesService {
     const cambios: Partial<Avance> = { estado, revisadoPorId: usuario.id, revisadoAt: new Date() };
     if (observacion !== null) cambios.observacion = observacion;
     await this.ds.transaction(async (m) => {
-      // Condición sobre el estado: si dos administradores revisan a la vez, solo uno gana.
-      const r = await m.update(Avance, { id: avance.id, estado: 'ENVIADO' }, cambios);
-      if (!r.affected) throw new ConflictException('El avance acaba de ser revisado por otra persona. Actualiza la lista.');
+      // Se bloquea la fila: si dos administradores revisan a la vez, el segundo encuentra el avance ya revisado.
+      // Con save() (y no update()) la bitácora anota el cambio con el id del avance, que usa el historial (SGP-116).
+      const fila = await m.findOne(Avance, { where: { id: avance.id }, lock: { mode: 'pessimistic_write' } });
+      if (fila?.estado !== 'ENVIADO') throw new ConflictException('El avance acaba de ser revisado por otra persona. Actualiza la lista.');
+      await m.save(Object.assign(fila, cambios));
       // SGP-95: lo aprobado de un indicador mueve su cumplimiento, el de su resultado y el del proyecto.
       if (estado === 'APROBADO' && avance.iovId) await this.cumplimiento.desdeIndicador(avance.iovId, m);
     });

@@ -1,4 +1,5 @@
 import type { EstadoAvance } from './entities/avance.entity';
+import type { EventoHistorial } from './utils/historial';
 
 export interface EvidenciaVista {
   id: string;
@@ -37,4 +38,21 @@ export interface AvanceVista {
   createdAt: string;
   updatedAt: string;
   evidencias: EvidenciaVista[];
+}
+
+/** SGP-116: el indicador o la actividad cuyo historial se consulta, con su avance acumulado. */
+export interface ObjetivoHistorial {
+  tipo: 'IOV' | 'ACTIVIDAD';
+  id: string;
+  codigo: string;
+  nombre: string;
+  unidad: string | null;
+  meta: number | null;
+  cumplimientoPct: number;
+}
+
+/** SGP-116 (CP-28): los avances de un indicador o actividad en orden cronológico, cada uno con su línea de tiempo. */
+export interface HistorialVista {
+  objetivo: ObjetivoHistorial;
+  avances: Array<AvanceVista & { eventos: EventoHistorial[] }>;
 }

@@ -35,7 +35,7 @@ const props = defineProps<{
   /** SGP-82: es el técnico responsable de la actividad, con el proyecto abierto. */
   puedeRegistrarAvance?: boolean;
 }>();
-const emit = defineEmits<{ cambio: []; avances: [] }>();
+const emit = defineEmits<{ cambio: []; avances: []; historial: [] }>();
 
 const toast = useToast();
 const trabajando = ref(false);
@@ -131,6 +131,18 @@ const tareaVencida = (t: Tarea) => t.estado !== 'COMPLETADA' && !!t.fechaLimite 
           :outlined="!puedeRegistrarAvance"
           data-test="ver-avances"
           @click="emit('avances')"
+        />
+        <!-- SGP-116 -->
+        <Button
+          icon="pi pi-history"
+          size="small"
+          severity="secondary"
+          text
+          rounded
+          aria-label="Historial de la actividad"
+          title="Historial"
+          data-test="ver-historial-actividad"
+          @click="emit('historial')"
         />
         <Tag
           :value="estado.label"
