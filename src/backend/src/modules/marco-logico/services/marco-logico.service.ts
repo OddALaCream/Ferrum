@@ -5,6 +5,7 @@ import { ProyectoEquipo } from '../../proyectos/entities/proyecto-equipo.entity'
 import { RolUsuario } from '../../proyectos/entities/usuario.entity';
 import type { UsuarioAutenticado } from '../../auth/types/auth.types';
 import { Proyecto } from '../../proyectos/entities/proyecto.entity';
+import { CumplimientoService } from '../../seguimiento/cumplimiento.service';
 import { CrearIndicadorDto, EditarIndicadorDto } from '../dto/indicador.dto';
 import { CrearResultadoDto, EditarResultadoDto } from '../dto/resultado.dto';
 import { Iov } from '../entities/iov.entity';
@@ -27,6 +28,7 @@ export class MarcoLogicoService {
     @InjectRepository(Resultado) private readonly resultados: Repository<Resultado>,
     @InjectRepository(Iov) private readonly indicadores: Repository<Iov>,
     @InjectRepository(ProyectoEquipo) private readonly equipo: Repository<ProyectoEquipo>,
+    private readonly cumplimiento: CumplimientoService,
   ) {}
 
   /**
@@ -61,7 +63,7 @@ export class MarcoLogicoService {
 
     return {
       alcance: soloMias ? 'MIS_ACTIVIDADES' : 'COMPLETO',
-      proyecto: { id: p.id, codigo: p.codigo, nombre: p.nombre, estado: p.estado, fechaInicio: p.fechaInicio, fechaFin: p.fechaFin },
+      proyecto: { id: p.id, codigo: p.codigo, nombre: p.nombre, estado: p.estado, fechaInicio: p.fechaInicio, fechaFin: p.fechaFin, cumplimientoPct: Number(p.cumplimientoPct) },
       resultados: vista,
     };
   }
@@ -69,7 +71,9 @@ export class MarcoLogicoService {
   async crearResultado(proyectoId: string, dto: CrearResultadoDto): Promise<Resultado> {
     await this.proyectoEditable(proyectoId);
     try {
-      return await this.resultados.save(this.resultados.create({ ...dto, proyectoId }));
+      const r = await this.resultados.save(this.resultados.create({ ...dto, proyectoId }));
+      await this.cumplimiento.desdeProyecto(proyectoId);
+      return r;
     } catch (e) {
       if (codigoPg(e) === '23505') throw new ConflictException(MSG_RESULTADO_DUPLICADO);
       throw e;
@@ -79,9 +83,13 @@ export class MarcoLogicoService {
   async editarResultado(proyectoId: string, resultadoId: string, dto: EditarResultadoDto): Promise<Resultado> {
     await this.proyectoEditable(proyectoId);
     const r = await this.resultado(proyectoId, resultadoId);
+    const cambiaPeso = dto.peso !== undefined && dto.peso !== r.peso;
     Object.assign(r, dto);
     try {
-      return await this.resultados.save(r);
+      const guardado = await this.resultados.save(r);
+      // SGP-95: el peso del resultado cambia el promedio del proyecto
+      if (cambiaPeso) await this.cumplimiento.desdeProyecto(proyectoId);
+      return guardado;
     } catch (e) {
       if (codigoPg(e) === '23505') throw new ConflictException(MSG_RESULTADO_DUPLICADO);
       throw e;
@@ -93,6 +101,7 @@ export class MarcoLogicoService {
     const r = await this.resultado(proyectoId, resultadoId);
     try {
       await this.resultados.delete(r.id);
+      await this.cumplimiento.desdeProyecto(proyectoId);
     } catch (e) {
       if (esViolacionFk(e)) {
         throw new ConflictException('No se puede eliminar el resultado: todavía tiene indicadores o actividades.');
@@ -109,7 +118,10 @@ export class MarcoLogicoService {
     this.validarMeta(lineaBase, dto.meta);
     await this.validarPeso(resultadoId, dto.peso ?? 0);
     try {
-      return await this.indicadores.save(this.indicadores.create({ ...dto, lineaBase, resultadoId }));
+      const i = await this.indicadores.save(this.indicadores.create({ ...dto, lineaBase, resultadoId }));
+      // SGP-95: un indicador nuevo (al 0 %) entra en el promedio de su resultado
+      await this.cumplimiento.desdeResultado(resultadoId);
+      return i;
     } catch (e) {
       if (codigoPg(e) === '23505') throw new ConflictException(MSG_INDICADOR_DUPLICADO);
       throw e;
@@ -121,11 +133,18 @@ export class MarcoLogicoService {
     await this.resultado(proyectoId, resultadoId);
     const i = await this.indicador(resultadoId, indicadorId);
     if (dto.responsableId) await this.validarResponsable(proyectoId, dto.responsableId);
+    const antes = { lineaBase: i.lineaBase, meta: i.meta, peso: i.peso };
     Object.assign(i, dto);
     this.validarMeta(i.lineaBase, i.meta);
     if (dto.peso !== undefined) await this.validarPeso(resultadoId, dto.peso, i.id);
     try {
-      return await this.indicadores.save(i);
+      const guardado = await this.indicadores.save(i);
+      // SGP-95: con otra base, meta o peso, lo ya aprobado vale otro %
+      if (antes.lineaBase !== i.lineaBase || antes.meta !== i.meta || antes.peso !== i.peso) {
+        await this.cumplimiento.desdeIndicador(i.id);
+        return { ...guardado, ...(await this.indicadores.findOneByOrFail({ id: i.id })) };
+      }
+      return guardado;
     } catch (e) {
       if (codigoPg(e) === '23505') throw new ConflictException(MSG_INDICADOR_DUPLICADO);
       throw e;
@@ -138,6 +157,7 @@ export class MarcoLogicoService {
     const i = await this.indicador(resultadoId, indicadorId);
     try {
       await this.indicadores.delete(i.id);
+      await this.cumplimiento.desdeResultado(resultadoId);
     } catch (e) {
       if (esViolacionFk(e)) {
         throw new ConflictException('No se puede eliminar el indicador: tiene actividades o avances asociados.');

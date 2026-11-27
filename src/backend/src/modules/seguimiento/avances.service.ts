@@ -18,6 +18,7 @@ import { esFechaValida, hoyIso } from '../marco-logico/utils/estado-efectivo';
 import { Proyecto } from '../proyectos/entities/proyecto.entity';
 import { RolUsuario } from '../proyectos/entities/usuario.entity';
 import type { AvanceVista, EvidenciaVista } from './avances.types';
+import { CumplimientoService } from './cumplimiento.service';
 import { CrearAvanceDto, EditarAvanceDto, ListarAvancesDto, ObservarAvanceDto } from './dto/avance.dto';
 import { Avance, type EstadoAvance } from './entities/avance.entity';
 import { Evidencia } from './entities/evidencia.entity';
@@ -46,6 +47,7 @@ export class AvancesService {
   constructor(
     private readonly ds: DataSource,
     private readonly storage: StorageAdapter,
+    private readonly cumplimiento: CumplimientoService,
     @InjectRepository(Avance) private readonly avances: Repository<Avance>,
     @InjectRepository(Evidencia) private readonly evidencias: Repository<Evidencia>,
     @InjectRepository(Proyecto) private readonly proyectos: Repository<Proyecto>,
@@ -283,9 +285,13 @@ export class AvancesService {
     }
     const cambios: Partial<Avance> = { estado, revisadoPorId: usuario.id, revisadoAt: new Date() };
     if (observacion !== null) cambios.observacion = observacion;
-    // Condición sobre el estado: si dos administradores revisan a la vez, solo uno gana.
-    const r = await this.avances.update({ id: avance.id, estado: 'ENVIADO' }, cambios);
-    if (!r.affected) throw new ConflictException('El avance acaba de ser revisado por otra persona. Actualiza la lista.');
+    await this.ds.transaction(async (m) => {
+      // Condición sobre el estado: si dos administradores revisan a la vez, solo uno gana.
+      const r = await m.update(Avance, { id: avance.id, estado: 'ENVIADO' }, cambios);
+      if (!r.affected) throw new ConflictException('El avance acaba de ser revisado por otra persona. Actualiza la lista.');
+      // SGP-95: lo aprobado de un indicador mueve su cumplimiento, el de su resultado y el del proyecto.
+      if (estado === 'APROBADO' && avance.iovId) await this.cumplimiento.desdeIndicador(avance.iovId, m);
+    });
     return this.vista(proyectoId, avance.id, usuario);
   }
 

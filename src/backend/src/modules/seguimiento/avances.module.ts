@@ -7,14 +7,15 @@ import { ProyectoSupervisor } from '../proyectos/entities/proyecto-supervisor.en
 import { Proyecto } from '../proyectos/entities/proyecto.entity';
 import { AvancesController } from './avances.controller';
 import { AvancesService } from './avances.service';
+import { CumplimientoService } from './cumplimiento.service';
 import { Avance } from './entities/avance.entity';
 import { Evidencia } from './entities/evidencia.entity';
 
-/** Seguimiento: avances de indicadores y actividades con sus evidencias (SGP-82). El almacenamiento es global. */
+/** Seguimiento: avances de indicadores y actividades con sus evidencias (SGP-82), su revisión (SGP-94) y el % de cumplimiento (SGP-95). El almacenamiento es global. */
 @Module({
   // ProyectoEquipo y ProyectoSupervisor: los requiere @AlcanceProyecto
   imports: [TypeOrmModule.forFeature([Avance, Evidencia, Proyecto, Iov, Actividad, ProyectoEquipo, ProyectoSupervisor])],
   controllers: [AvancesController],
-  providers: [AvancesService],
+  providers: [AvancesService, CumplimientoService],
 })
 export class AvancesModule {}

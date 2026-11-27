@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Proyecto } from '../proyectos/entities/proyecto.entity';
 import { ProyectoEquipo } from '../proyectos/entities/proyecto-equipo.entity';
 import { ProyectoSupervisor } from '../proyectos/entities/proyecto-supervisor.entity';
+import { CumplimientoService } from '../seguimiento/cumplimiento.service';
 import { ActividadesController } from './controllers/actividades.controller';
 import { MarcoLogicoController } from './controllers/marco-logico.controller';
 import { SeguimientoController } from './controllers/seguimiento.controller';
@@ -21,6 +22,6 @@ import { TareasService } from './services/tareas.service';
 @Module({
   imports: [TypeOrmModule.forFeature([Proyecto, ProyectoEquipo, ProyectoSupervisor, Resultado, Iov, Actividad, ActividadSesion, Tarea])],
   controllers: [MarcoLogicoController, ActividadesController, TareasController, SeguimientoController],
-  providers: [MarcoLogicoService, ActividadesService, TareasService, SeguimientoService, ProcesoRetrasosService],
+  providers: [MarcoLogicoService, ActividadesService, TareasService, SeguimientoService, ProcesoRetrasosService, CumplimientoService],
 })
 export class MarcoLogicoModule {}
